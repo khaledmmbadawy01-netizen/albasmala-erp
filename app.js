@@ -1105,52 +1105,58 @@ const Scanner = {
     }
   },
   onResult(code) {
-    const target = State.barcodeTarget;
-    Scanner.stop().then(function () {
-      Scanner.handleBarcode(code, target);
-    });
-  },
+  const target = State.barcodeTarget;
+  Scanner.stop().then(function () {
+    // اقفل المودال بس بعد ما ننفذ المهمة
+    const deferred = function(fn) {
+      setTimeout(fn, 100);
+    };
+    Scanner.handleBarcode(code, target, deferred);
+  });
+},
   handleBarcode(code, target) {
-    const products = cache.products || [];
-    const p = products.find(function (x) {
-      return x.barcode === code || x.code === code;
-    });
-    if (target === 'search') {
-      Modal.close();
+  handleBarcode(code, target) {
+  const products = cache.products || [];
+  const p = products.find(function (x) {
+    return x.barcode === code || x.code === code;
+  });
+  if (target === 'search') {
+    Modal.close();
+    setTimeout(function () {
       const el = document.getElementById('prodSearch');
       if (el) { el.value = code; Products.search(code); }
-    } else if (target === 'field') {
-      Modal.close();
-      setTimeout(function () {
-        const el = document.getElementById('p_barcode');
-        if (el) {
-          el.value = code;
-          Toast.show('✅ تم المسح: ' + code);
-        }
-      }, 200);
-    } else if (target === 'sale') {
-      Modal.close();
-      if (!p) {
-        Scanner.quickAddProduct(code, 'sale');
-        return;
-      }
+    }, 200);
+  } else if (target === 'field') {
+    // ⚠️ الإصلاح: حط الكود في الحقل الأول، وبعدين اقفل المودال
+    const el = document.getElementById('p_barcode');
+    if (el) {
+      el.value = code;
+      Toast.show('✅ تم المسح: ' + code);
+    }
+    setTimeout(function () { Modal.close(); }, 500);
+  } else if (target === 'sale') {
+    Modal.close();
+    setTimeout(function () {
+      if (!p) { Scanner.quickAddProduct(code, 'sale'); return; }
       Sales.addItemById(p.id);
       Toast.show('✅ ' + p.name);
-    } else if (target === 'purchase') {
-      Modal.close();
-      if (!p) {
-        Scanner.quickAddProduct(code, 'purchase');
-        return;
-      }
+    }, 200);
+  } else if (target === 'purchase') {
+    Modal.close();
+    setTimeout(function () {
+      if (!p) { Scanner.quickAddProduct(code, 'purchase'); return; }
       Purchases.addItemById(p.id);
       Toast.show('✅ ' + p.name);
-    } else if (target === 'return') {
-      Modal.close();
-      if (!p) return Toast.show('منتج غير موجود: ' + code, 'error');
+    }, 200);
+  } else if (target === 'return') {
+    Modal.close();
+    setTimeout(function () {
+      if (!p) { Toast.show('منتج غير موجود: ' + code, 'error'); return; }
       Returns.addItemById(p.id);
       Toast.show('✅ ' + p.name);
-    }
-  },
+    }, 200);
+  }
+},
   quickAddProduct(barcode, context) {
     const html =
       '<div class="warning-box">⚠️ المنتج غير موجود. هل تريد إضافته الآن؟</div>' +
