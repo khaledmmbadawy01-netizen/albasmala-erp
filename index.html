@@ -1,0 +1,3085 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="نظام ERP احترافي — شركة البسملة 2026">
+<title>🏪 البسملة ERP 2026</title>
+
+<!-- مكتبات خارجية -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   🎨 المتغيرات الأساسية (أسود × ذهبي)
+   ═══════════════════════════════════════════════════════════════════ */
+:root {
+  --gold:#D4AF37;
+  --gold-2:#B8941F;
+  --gold-3:#F0D97D;
+  --gold-glow:rgba(212,175,55,.4);
+  --gold-soft:rgba(212,175,55,.15);
+  --black:#000000;
+  --black-2:#050505;
+  --black-3:#0a0a0a;
+  --black-4:#111111;
+  --black-5:#1a1a1a;
+  --border:#2a2a2a;
+  --border-light:#333333;
+  --text:#e8e8e8;
+  --text-2:#a8a8a8;
+  --text-3:#666666;
+  --green:#2e7d32;
+  --green-2:#66bb6a;
+  --red:#c62828;
+  --red-2:#ef5350;
+  --orange:#ef6c00;
+  --orange-2:#ffa726;
+  --blue:#0277bd;
+  --blue-2:#42a5f5;
+  --purple:#7b1fa2;
+  --purple-2:#ab47bc;
+  --radius:16px;
+  --radius-sm:12px;
+  --radius-lg:20px;
+  --radius-xl:28px;
+  --safe-top:env(safe-area-inset-top, 0px);
+  --safe-bottom:env(safe-area-inset-bottom, 0px);
+  --shadow-gold:0 4px 20px rgba(212,175,55,.35);
+  --shadow-gold-strong:0 8px 32px rgba(212,175,55,.5);
+  --shadow-dark:0 4px 20px rgba(0,0,0,.8);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🔄 إعادة التعيين
+   ═══════════════════════════════════════════════════════════════════ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, sans-serif;
+  background: var(--black);
+  color: var(--text);
+  overflow-x: hidden;
+  font-size: 15px;
+  line-height: 1.5;
+  overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* الخلفية السوداء الفخمة */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(212,175,55,.12) 0%, transparent 55%),
+    radial-gradient(circle at 50% 110%, rgba(212,175,55,.08) 0%, transparent 55%),
+    radial-gradient(circle at 0% 50%, rgba(212,175,55,.04) 0%, transparent 45%),
+    #000;
+  z-index: -2;
+  pointer-events: none;
+}
+
+/* نقشة ذهبية خفيفة */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(212,175,55,.015) 0, rgba(212,175,55,.015) 1px, transparent 1px, transparent 30px),
+    repeating-linear-gradient(-45deg, rgba(212,175,55,.015) 0, rgba(212,175,55,.015) 1px, transparent 1px, transparent 30px);
+  z-index: -1;
+  pointer-events: none;
+  opacity: .6;
+}
+
+.hidden { display: none !important; }
+.invisible { visibility: hidden; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   🔤 النصوص والألوان
+   ═══════════════════════════════════════════════════════════════════ */
+.text-gold { color: var(--gold); }
+.text-green { color: var(--green-2); }
+.text-red { color: var(--red-2); }
+.text-orange { color: var(--orange-2); }
+.text-blue { color: var(--blue-2); }
+.text-muted { color: var(--text-2); }
+.text-center { text-align: center; }
+.text-bold { font-weight: 700; }
+.text-sm { font-size: 12px; }
+.text-xs { font-size: 11px; }
+.text-lg { font-size: 18px; }
+.text-xl { font-size: 22px; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   🎬 شاشة التحميل
+   ═══════════════════════════════════════════════════════════════════ */
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  padding: 20px;
+  transition: opacity .5s ease;
+}
+
+.loading-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 40%, rgba(212,175,55,.15) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.loading-logo {
+  width: 140px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 90px;
+  margin-bottom: 20px;
+  filter: drop-shadow(0 0 30px var(--gold-glow));
+  animation: logoPulse 2s ease-in-out infinite;
+}
+
+@keyframes logoPulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 30px var(--gold-glow)); }
+  50% { transform: scale(1.08); filter: drop-shadow(0 0 50px var(--gold)); }
+}
+
+.loading-title {
+  color: var(--gold);
+  font-size: 28px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  text-shadow: 0 0 30px var(--gold-glow);
+  letter-spacing: 1px;
+}
+
+.loading-sub {
+  color: var(--gold);
+  opacity: .7;
+  font-size: 13px;
+  letter-spacing: 4px;
+  margin-bottom: 40px;
+  font-weight: 600;
+}
+
+.loading-bar-container {
+  width: 240px;
+  height: 4px;
+  background: rgba(212,175,55,.15);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.loading-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--gold-3), var(--gold));
+  width: 0%;
+  border-radius: 2px;
+  transition: width .3s ease;
+  box-shadow: 0 0 12px var(--gold);
+}
+
+.loading-text {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🔐 شاشات المصادقة
+   ═══════════════════════════════════════════════════════════════════ */
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  z-index: 1000;
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at 50% 15%, rgba(212,175,55,.18), transparent 50%),
+    radial-gradient(circle at 50% 85%, rgba(212,175,55,.10), transparent 50%),
+    #000;
+  animation: fadeIn .4s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.auth-screen .auth-logo {
+  width: 110px;
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 70px;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 0 25px var(--gold-glow));
+}
+
+.auth-screen h1 {
+  color: var(--gold);
+  font-size: 26px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  text-shadow: 0 0 20px var(--gold-glow);
+  letter-spacing: .5px;
+  text-align: center;
+}
+
+.auth-screen .sub {
+  color: var(--gold);
+  opacity: .75;
+  font-size: 12px;
+  margin-bottom: 24px;
+  letter-spacing: 3px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.auth-card {
+  background: linear-gradient(180deg, rgba(20,20,20,.98), rgba(10,10,10,.98));
+  border: 2px solid var(--gold);
+  border-radius: var(--radius-lg);
+  padding: 26px 22px;
+  width: 100%;
+  max-width: 440px;
+  box-shadow:
+    0 20px 60px rgba(0,0,0,.8),
+    0 0 40px rgba(212,175,55,.25),
+    inset 0 1px 0 rgba(212,175,55,.15);
+  backdrop-filter: blur(10px);
+  position: relative;
+}
+
+.auth-card::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+
+.auth-card h2 {
+  color: var(--gold);
+  font-size: 18px;
+  margin-bottom: 20px;
+  text-align: center;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(212,175,55,.2);
+  font-weight: 700;
+}
+
+.auth-card label {
+  display: block;
+  color: var(--gold);
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 13px;
+  opacity: .9;
+}
+
+.auth-card input,
+.auth-card select {
+  width: 100%;
+  background: #050505;
+  border: 1.5px solid var(--border-light);
+  color: var(--gold);
+  padding: 13px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-family: inherit;
+  transition: all .25s ease;
+  margin-bottom: 14px;
+  outline: none;
+}
+
+.auth-card input::placeholder {
+  color: #444;
+}
+
+.auth-card input:focus,
+.auth-card select:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(212,175,55,.15), 0 0 20px rgba(212,175,55,.3);
+  background: #0a0a0a;
+}
+
+.auth-btn {
+  width: 100%;
+  padding: 15px;
+  background: linear-gradient(135deg, var(--gold), var(--gold-2));
+  color: #000;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .2s ease;
+  box-shadow: var(--shadow-gold);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  letter-spacing: .3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.3), transparent);
+  transition: left .5s ease;
+}
+
+.auth-btn:active::before {
+  left: 100%;
+}
+
+.auth-btn:active {
+  transform: scale(.97);
+  box-shadow: 0 2px 10px var(--gold-glow);
+}
+
+.auth-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.auth-btn-secondary {
+  background: transparent;
+  color: var(--gold);
+  border: 2px solid var(--gold);
+  box-shadow: none;
+}
+
+.auth-btn-secondary:active {
+  background: rgba(212,175,55,.15);
+}
+
+.auth-info {
+  font-size: 12px;
+  color: var(--text-2);
+  text-align: center;
+  margin-top: 12px;
+  line-height: 1.7;
+}
+
+.auth-info a {
+  color: var(--gold);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.auth-error {
+  background: rgba(198,40,40,.15);
+  border: 1px solid var(--red);
+  color: var(--red-2);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  margin-bottom: 14px;
+  text-align: center;
+  animation: shake .4s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+.auth-success {
+  background: rgba(56,142,60,.15);
+  border: 1px solid var(--green);
+  color: var(--green-2);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📋 خيارات الترحيب
+   ═══════════════════════════════════════════════════════════════════ */
+.welcome-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.welcome-option {
+  background: linear-gradient(180deg, rgba(20,20,20,.95), rgba(10,10,10,.95));
+  border: 1.5px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 18px 16px;
+  cursor: pointer;
+  transition: all .25s ease;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: right;
+  position: relative;
+  overflow: hidden;
+}
+
+.welcome-option::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--gold);
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+
+.welcome-option:active {
+  transform: scale(.98);
+  border-color: var(--gold);
+  background: linear-gradient(180deg, rgba(212,175,55,.12), rgba(20,20,20,.95));
+  box-shadow: 0 0 20px var(--gold-soft);
+}
+
+.welcome-option:active::before {
+  opacity: 1;
+}
+
+.welcome-option .opt-icon {
+  font-size: 34px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 10px var(--gold-glow));
+}
+
+.welcome-option .opt-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.welcome-option .opt-title {
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.welcome-option .opt-desc {
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.welcome-option.primary {
+  border-color: var(--gold);
+  background: linear-gradient(180deg, rgba(212,175,55,.15), rgba(10,10,10,.95));
+}
+
+.welcome-option.primary::before {
+  opacity: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🆔 عرض معرف الشركة
+   ═══════════════════════════════════════════════════════════════════ */
+.company-id-display {
+  background: rgba(212,175,55,.08);
+  border: 2px dashed var(--gold);
+  border-radius: var(--radius);
+  padding: 18px;
+  text-align: center;
+  margin: 16px 0;
+  position: relative;
+}
+
+.company-id-display .label {
+  color: var(--text-2);
+  font-size: 12px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.company-id-display .value {
+  color: var(--gold);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  font-family: 'Courier New', monospace;
+  word-break: break-all;
+  text-shadow: 0 0 15px var(--gold-glow);
+  margin-bottom: 10px;
+}
+
+.copy-btn {
+  background: var(--gold);
+  color: #000;
+  border: none;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .2s ease;
+  box-shadow: 0 2px 10px var(--gold-glow);
+}
+
+.copy-btn:active {
+  transform: scale(.95);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🔝 الشريط العلوي
+   ═══════════════════════════════════════════════════════════════════ */
+.topbar {
+  background: linear-gradient(180deg, #0a0a0a, #000);
+  border-bottom: 2px solid var(--gold);
+  color: var(--gold);
+  padding: calc(10px + var(--safe-top)) 12px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 4px 20px rgba(212,175,55,.25);
+  gap: 8px;
+}
+
+.topbar h1 {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--gold);
+  text-shadow: 0 0 12px var(--gold-glow);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  text-align: center;
+  letter-spacing: .3px;
+}
+
+.topbar .icon-btn {
+  background: rgba(212,175,55,.12);
+  border: 1.5px solid var(--gold);
+  color: var(--gold);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .2s ease;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.topbar .icon-btn:active {
+  background: var(--gold);
+  color: #000;
+  transform: scale(.92);
+  box-shadow: 0 0 20px var(--gold-glow);
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ☁️ شريط المزامنة
+   ═══════════════════════════════════════════════════════════════════ */
+.sync-bar {
+  background: rgba(10,10,10,.95);
+  padding: 7px 14px;
+  font-size: 11px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(212,175,55,.15);
+  position: sticky;
+  top: calc(63px + var(--safe-top));
+  z-index: 99;
+  backdrop-filter: blur(10px);
+}
+
+.sync-bar .status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.sync-bar .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #666;
+  transition: all .3s ease;
+}
+
+.sync-bar .dot.online {
+  background: var(--green-2);
+  box-shadow: 0 0 10px var(--green-2);
+  animation: dotPulse 2s ease-in-out infinite;
+}
+
+.sync-bar .dot.offline {
+  background: var(--red-2);
+  box-shadow: 0 0 10px var(--red-2);
+}
+
+.sync-bar .dot.syncing {
+  background: var(--orange-2);
+  animation: dotBlink 1s ease-in-out infinite;
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .7; transform: scale(1.15); }
+}
+
+@keyframes dotBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📄 الصفحات
+   ═══════════════════════════════════════════════════════════════════ */
+.page {
+  padding-bottom: 100px;
+  min-height: calc(100vh - 120px);
+  animation: pageFadeIn .3s ease;
+}
+
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🃏 الكروت
+   ═══════════════════════════════════════════════════════════════════ */
+.card {
+  background: linear-gradient(180deg, rgba(20,20,20,.96), rgba(10,10,10,.96));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 10px 12px;
+  box-shadow: 0 4px 15px rgba(0,0,0,.6);
+  backdrop-filter: blur(6px);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(212,175,55,.3), transparent);
+}
+
+.card h3 {
+  color: var(--gold);
+  font-size: 16px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid rgba(212,175,55,.15);
+  padding-bottom: 10px;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card h3 .card-icon {
+  font-size: 20px;
+  margin-left: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📝 النماذج
+   ═══════════════════════════════════════════════════════════════════ */
+.form-group {
+  margin-bottom: 14px;
+}
+
+.form-group label {
+  display: block;
+  color: var(--gold);
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 13px;
+  opacity: .95;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  background: #080808;
+  border: 1.5px solid var(--border-light);
+  color: var(--text);
+  padding: 13px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-family: inherit;
+  transition: all .2s ease;
+  outline: none;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+  color: var(--text-3);
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(212,175,55,.12), 0 0 15px rgba(212,175,55,.2);
+  background: #0a0a0a;
+}
+
+.form-group select option {
+  background: #1a1a1a;
+  color: var(--text);
+  padding: 10px;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🔘 الأزرار
+   ═══════════════════════════════════════════════════════════════════ */
+.btn {
+  padding: 12px 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  position: relative;
+  overflow: hidden;
+  letter-spacing: .2px;
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--x,50%) var(--y,50%), rgba(255,255,255,.3), transparent 60%);
+  opacity: 0;
+  transition: opacity .3s ease;
+}
+
+.btn:active::before {
+  opacity: 1;
+}
+
+.btn:active {
+  transform: scale(.96);
+}
+
+.btn:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--gold), var(--gold-2));
+  color: #000;
+  box-shadow: 0 4px 15px var(--gold-glow);
+}
+
+.btn-primary:active {
+  box-shadow: 0 2px 8px var(--gold-glow);
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, var(--red), #8b0000);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(198,40,40,.4);
+}
+
+.btn-warning {
+  background: linear-gradient(135deg, var(--orange), #b34700);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(239,108,0,.4);
+}
+
+.btn-success {
+  background: linear-gradient(135deg, var(--green), #1b5e20);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(46,125,50,.4);
+}
+
+.btn-info {
+  background: linear-gradient(135deg, var(--blue), #01579b);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(2,119,189,.4);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--gold);
+  border: 1.5px solid var(--gold);
+}
+
+.btn-outline:active {
+  background: rgba(212,175,55,.15);
+}
+
+.btn-full {
+  width: 100%;
+  padding: 15px;
+  font-size: 15px;
+}
+
+.btn-sm {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🔲 شبكة القائمة
+   ═══════════════════════════════════════════════════════════════════ */
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  padding: 12px;
+}
+
+.menu-tile {
+  background: linear-gradient(180deg, rgba(20,20,20,.96), rgba(10,10,10,.96));
+  border: 1.5px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 18px 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: all .25s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 130px;
+  position: relative;
+  box-shadow: 0 3px 12px rgba(0,0,0,.6);
+  overflow: hidden;
+}
+
+.menu-tile::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(212,175,55,.15), transparent 40%);
+  opacity: 0;
+  transition: opacity .3s ease;
+  pointer-events: none;
+}
+
+.menu-tile:active {
+  transform: scale(.95);
+  border-color: var(--gold);
+  box-shadow: 0 0 25px var(--gold-glow);
+}
+
+.menu-tile:active::before {
+  opacity: 1;
+}
+
+.menu-tile .icon {
+  font-size: 40px;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 0 8px rgba(212,175,55,.3));
+  transition: transform .3s ease;
+}
+
+.menu-tile:active .icon {
+  transform: scale(1.1);
+}
+
+.menu-tile .title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold);
+  line-height: 1.3;
+}
+
+.menu-tile .badge {
+  background: linear-gradient(135deg, var(--red), #8b0000);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 10px;
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  box-shadow: 0 2px 8px rgba(198,40,40,.5);
+  min-width: 20px;
+  text-align: center;
+}
+
+.menu-tile.locked {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.menu-tile.locked::after {
+  content: '🔒';
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 14px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📊 شبكة الإحصائيات
+   ═══════════════════════════════════════════════════════════════════ */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  padding: 12px;
+}
+
+.stat-card {
+  background: linear-gradient(180deg, rgba(20,20,20,.96), rgba(10,10,10,.96));
+  border: 1px solid var(--border-light);
+  border-right: 4px solid var(--gold);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  box-shadow: 0 3px 12px rgba(0,0,0,.6);
+  transition: transform .2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card:active {
+  transform: scale(.98);
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  background: inherit;
+  filter: blur(8px);
+  opacity: .5;
+}
+
+.stat-card .label {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.stat-card .value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--gold);
+  text-shadow: 0 0 10px var(--gold-glow);
+  line-height: 1.2;
+}
+
+.stat-card .sub-value {
+  font-size: 11px;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+
+.stat-card.green { border-right-color: var(--green); }
+.stat-card.green .value { color: var(--green-2); text-shadow: 0 0 10px rgba(102,187,106,.3); }
+.stat-card.red { border-right-color: var(--red); }
+.stat-card.red .value { color: var(--red-2); text-shadow: 0 0 10px rgba(239,83,80,.3); }
+.stat-card.orange { border-right-color: var(--orange); }
+.stat-card.orange .value { color: var(--orange-2); text-shadow: 0 0 10px rgba(255,167,38,.3); }
+.stat-card.blue { border-right-color: var(--blue); }
+.stat-card.blue .value { color: var(--blue-2); text-shadow: 0 0 10px rgba(66,165,245,.3); }
+.stat-card.purple { border-right-color: var(--purple); }
+.stat-card.purple .value { color: var(--purple-2); text-shadow: 0 0 10px rgba(171,71,188,.3); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   📋 عناصر القائمة
+   ═══════════════════════════════════════════════════════════════════ */
+.list-item {
+  background: linear-gradient(180deg, rgba(20,20,20,.94), rgba(10,10,10,.94));
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 8px rgba(0,0,0,.5);
+  transition: all .2s ease;
+  gap: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.list-item::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--gold);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform .25s ease;
+}
+
+.list-item:active {
+  border-color: var(--gold);
+  background: linear-gradient(180deg, rgba(212,175,55,.08), rgba(10,10,10,.94));
+}
+
+.list-item:active::before {
+  transform: scaleY(1);
+}
+
+.list-item .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-item .info h4 {
+  font-size: 15px;
+  margin-bottom: 4px;
+  color: var(--gold);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list-item .info p {
+  font-size: 12px;
+  color: var(--text-2);
+  margin: 3px 0;
+  line-height: 1.4;
+}
+
+.list-item .actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🗂️ التبويبات
+   ═══════════════════════════════════════════════════════════════════ */
+.tabs {
+  display: flex;
+  background: rgba(10,10,10,.96);
+  border-bottom: 2px solid rgba(212,175,55,.15);
+  overflow-x: auto;
+  position: sticky;
+  top: calc(100px + var(--safe-top));
+  z-index: 90;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  backdrop-filter: blur(10px);
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  flex: 1;
+  min-width: 100px;
+  padding: 13px 10px;
+  text-align: center;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text-3);
+  border-bottom: 3px solid transparent;
+  transition: all .25s ease;
+  white-space: nowrap;
+  font-size: 13px;
+  position: relative;
+  user-select: none;
+}
+
+.tab.active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+  background: rgba(212,175,55,.08);
+  text-shadow: 0 0 10px var(--gold-glow);
+}
+
+.tab:active {
+  background: rgba(212,175,55,.12);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🔍 شريط البحث
+   ═══════════════════════════════════════════════════════════════════ */
+.search-bar {
+  padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(20,20,20,.96), rgba(10,10,10,.96));
+  margin: 8px 12px;
+  border: 1.5px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  transition: border-color .2s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,.5);
+}
+
+.search-bar:focus-within {
+  border-color: var(--gold);
+  box-shadow: 0 0 15px var(--gold-soft);
+}
+
+.search-bar input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  padding: 6px;
+}
+
+.search-bar input::placeholder {
+  color: var(--text-3);
+}
+
+.search-bar span {
+  color: var(--gold);
+  font-size: 16px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ➕ زر FAB
+   ═══════════════════════════════════════════════════════════════════ */
+.fab {
+  position: fixed;
+  bottom: calc(88px + var(--safe-bottom));
+  left: 16px;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), var(--gold-2));
+  color: #000;
+  border: none;
+  font-size: 30px;
+  font-weight: 300;
+  cursor: pointer;
+  box-shadow: 0 6px 25px var(--gold-glow), 0 0 40px rgba(212,175,55,.2);
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .25s ease;
+  line-height: 1;
+}
+
+.fab:active {
+  transform: scale(.9) rotate(90deg);
+  box-shadow: 0 4px 15px var(--gold-glow);
+}
+
+.fab.secondary {
+  left: auto;
+  right: 16px;
+  bottom: calc(160px + var(--safe-bottom));
+  width: 54px;
+  height: 54px;
+  background: linear-gradient(135deg, var(--blue), #01579b);
+  color: #fff;
+  font-size: 24px;
+  box-shadow: 0 6px 25px rgba(2,119,189,.5);
+}
+
+.fab.green {
+  background: linear-gradient(135deg, var(--green), #1b5e20);
+  color: #fff;
+  box-shadow: 0 6px 25px rgba(46,125,50,.5);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🧭 شريط التنقل السفلي
+   ═══════════════════════════════════════════════════════════════════ */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(180deg, #0a0a0a, #000);
+  border-top: 2px solid var(--gold);
+  display: flex;
+  justify-content: space-around;
+  padding: 8px 0 calc(8px + var(--safe-bottom));
+  z-index: 500;
+  box-shadow: 0 -4px 25px rgba(212,175,55,.2);
+  backdrop-filter: blur(15px);
+}
+
+.bottom-nav .nav-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 8px 4px;
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  transition: all .2s ease;
+  position: relative;
+}
+
+.bottom-nav .nav-btn .ico {
+  font-size: 24px;
+  transition: transform .2s ease;
+}
+
+.bottom-nav .nav-btn.active {
+  color: var(--gold);
+  text-shadow: 0 0 10px var(--gold-glow);
+}
+
+.bottom-nav .nav-btn.active .ico {
+  transform: scale(1.15);
+  filter: drop-shadow(0 0 10px var(--gold-glow));
+}
+
+.bottom-nav .nav-btn.active::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 25%;
+  right: 25%;
+  height: 3px;
+  background: var(--gold);
+  border-radius: 2px;
+  box-shadow: 0 0 10px var(--gold);
+}
+
+.bottom-nav .nav-btn:active {
+  background: rgba(212,175,55,.1);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   💬 Modal
+   ═══════════════════════════════════════════════════════════════════ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.9);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  backdrop-filter: blur(8px);
+  animation: fadeIn .25s ease;
+}
+
+.modal {
+  background: linear-gradient(180deg, #0f0f0f, #050505);
+  border: 2px solid var(--gold);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 22px;
+  box-shadow:
+    0 20px 60px rgba(0,0,0,.9),
+    0 0 60px rgba(212,175,55,.3);
+  animation: modalSlideUp .3s ease;
+  position: relative;
+}
+
+.modal::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold-3), transparent);
+}
+
+@keyframes modalSlideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal h3 {
+  color: var(--gold);
+  margin-bottom: 16px;
+  font-size: 18px;
+  border-bottom: 1px solid rgba(212,175,55,.2);
+  padding-bottom: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🔔 Toast
+   ═══════════════════════════════════════════════════════════════════ */
+.toast {
+  position: fixed;
+  bottom: calc(100px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #1a1a1a, #0a0a0a);
+  border: 1.5px solid var(--gold);
+  color: var(--gold);
+  padding: 14px 26px;
+  border-radius: 30px;
+  z-index: 5000;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 8px 30px rgba(0,0,0,.8), 0 0 30px var(--gold-soft);
+  max-width: 90%;
+  text-align: center;
+  animation: toastSlideUp .35s ease;
+  letter-spacing: .2px;
+}
+
+@keyframes toastSlideUp {
+  from { transform: translate(-50%, 30px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+.toast.success {
+  border-color: var(--green);
+  color: var(--green-2);
+  box-shadow: 0 8px 30px rgba(0,0,0,.8), 0 0 30px rgba(102,187,106,.3);
+}
+
+.toast.error {
+  border-color: var(--red);
+  color: var(--red-2);
+  box-shadow: 0 8px 30px rgba(0,0,0,.8), 0 0 30px rgba(239,83,80,.3);
+}
+
+.toast.info {
+  border-color: var(--blue);
+  color: var(--blue-2);
+  box-shadow: 0 8px 30px rgba(0,0,0,.8), 0 0 30px rgba(66,165,245,.3);
+}
+
+.toast.warning {
+  border-color: var(--orange);
+  color: var(--orange-2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📸 الكاميرا
+   ═══════════════════════════════════════════════════════════════════ */
+.scanner-container {
+  padding: 16px;
+  text-align: center;
+}
+
+#reader {
+  width: 100%;
+  max-width: 400px;
+  margin: 16px auto;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 2px solid var(--gold);
+  box-shadow: 0 0 30px var(--gold-soft);
+  min-height: 240px;
+  background: #000;
+}
+
+#reader video {
+  border-radius: var(--radius-sm);
+  width: 100% !important;
+  height: auto !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🗺️ الخريطة
+   ═══════════════════════════════════════════════════════════════════ */
+#map {
+  width: 100%;
+  height: 450px;
+  border-radius: var(--radius);
+  border: 2px solid var(--gold);
+  margin: 10px 0;
+  box-shadow: 0 0 30px var(--gold-soft);
+  z-index: 1;
+}
+
+.map-container {
+  padding: 0 12px 12px;
+}
+
+.leaflet-container {
+  background: #111 !important;
+  font-family: inherit !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: #0a0a0a !important;
+  color: var(--text) !important;
+  border: 1px solid var(--gold) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+.leaflet-popup-tip {
+  background: #0a0a0a !important;
+  border: 1px solid var(--gold) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🧮 الحاسبة
+   ═══════════════════════════════════════════════════════════════════ */
+.calc-display {
+  background: #050505;
+  border: 2px solid var(--gold);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 14px;
+  text-align: left;
+  direction: ltr;
+  box-shadow: inset 0 0 20px rgba(212,175,55,.1);
+}
+
+.calc-display .history {
+  font-size: 13px;
+  color: var(--text-3);
+  min-height: 20px;
+  margin-bottom: 6px;
+  word-break: break-all;
+  font-family: 'Courier New', monospace;
+}
+
+.calc-display .current {
+  font-size: 36px;
+  color: var(--gold);
+  font-weight: 800;
+  min-height: 44px;
+  word-break: break-all;
+  text-shadow: 0 0 15px var(--gold-glow);
+  font-family: 'Courier New', monospace;
+}
+
+.calc-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.calc-btn {
+  padding: 20px 8px;
+  background: linear-gradient(180deg, rgba(30,30,30,.95), rgba(15,15,15,.95));
+  border: 1px solid var(--border-light);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  font-size: 22px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s ease;
+  font-family: inherit;
+  position: relative;
+  overflow: hidden;
+}
+
+.calc-btn:active {
+  transform: scale(.93);
+  background: linear-gradient(180deg, rgba(212,175,55,.25), rgba(20,20,20,.95));
+  border-color: var(--gold);
+  box-shadow: 0 0 15px var(--gold-soft);
+}
+
+.calc-btn.op {
+  background: linear-gradient(180deg, rgba(212,175,55,.2), rgba(20,20,20,.95));
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+.calc-btn.eq {
+  background: linear-gradient(135deg, var(--gold), var(--gold-2));
+  color: #000;
+  grid-column: span 2;
+  font-weight: 800;
+  box-shadow: 0 4px 15px var(--gold-glow);
+}
+
+.calc-btn.clear {
+  color: var(--red-2);
+}
+
+.calc-btn.del {
+  color: var(--orange-2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🔐 PIN
+   ═══════════════════════════════════════════════════════════════════ */
+.pin-display {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.pin-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  transition: all .2s ease;
+  background: transparent;
+}
+
+.pin-dot.filled {
+  background: var(--gold);
+  box-shadow: 0 0 15px var(--gold);
+  transform: scale(1.1);
+}
+
+.pin-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  max-width: 300px;
+  margin: 0 auto;
+}
+
+.pin-btn {
+  padding: 22px;
+  font-size: 26px;
+  font-weight: 700;
+  background: linear-gradient(180deg, rgba(30,30,30,.95), rgba(15,15,15,.95));
+  border: 1.5px solid var(--border-light);
+  color: var(--gold);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .15s ease;
+}
+
+.pin-btn:active {
+  background: rgba(212,175,55,.25);
+  border-color: var(--gold);
+  transform: scale(.93);
+  box-shadow: 0 0 20px var(--gold-soft);
+}
+
+.pin-btn.empty {
+  background: transparent;
+  border: none;
+  cursor: default;
+  pointer-events: none;
+}
+
+.pin-btn.del {
+  color: var(--orange-2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🧾 الفاتورة
+   ═══════════════════════════════════════════════════════════════════ */
+.receipt {
+  background: #fff;
+  color: #000;
+  padding: 20px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: 'Cairo', 'Courier New', monospace;
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+}
+
+.receipt .header {
+  text-align: center;
+  border-bottom: 2px dashed #000;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.receipt .header h2 {
+  color: var(--gold-2);
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.receipt .header p {
+  font-size: 11px;
+  margin: 2px 0;
+}
+
+.receipt .line {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.receipt .items {
+  margin: 12px 0;
+}
+
+.receipt .total {
+  border-top: 2px dashed #000;
+  padding-top: 10px;
+  font-weight: 800;
+  font-size: 15px;
+  margin-top: 6px;
+}
+
+.receipt hr {
+  border: none;
+  border-top: 1px dashed #000;
+  margin: 10px 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📍 حالة الموقع
+   ═══════════════════════════════════════════════════════════════════ */
+.location-status {
+  background: linear-gradient(180deg, rgba(20,20,20,.96), rgba(10,10,10,.96));
+  border: 2px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 10px 12px;
+  text-align: center;
+  transition: border-color .3s ease;
+  box-shadow: 0 4px 15px rgba(0,0,0,.5);
+}
+
+.location-status.in-range {
+  border-color: var(--green-2);
+  box-shadow: 0 0 25px rgba(102,187,106,.25);
+}
+
+.location-status.out-range {
+  border-color: var(--red-2);
+  box-shadow: 0 0 25px rgba(239,83,80,.25);
+}
+
+.location-status.checking {
+  border-color: var(--orange-2);
+  animation: pulseBorder 2s ease-in-out infinite;
+}
+
+@keyframes pulseBorder {
+  0%, 100% { box-shadow: 0 0 15px rgba(255,167,38,.2); }
+  50% { box-shadow: 0 0 35px rgba(255,167,38,.5); }
+}
+
+.location-status .status-icon {
+  font-size: 44px;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.location-status .status-text {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.location-status .distance {
+  font-size: 12px;
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.location-status .coords {
+  font-size: 10px;
+  color: var(--text-3);
+  margin-top: 8px;
+  font-family: 'Courier New', monospace;
+  background: rgba(0,0,0,.3);
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📊 صناديق المعلومات
+   ═══════════════════════════════════════════════════════════════════ */
+.info-box {
+  background: rgba(2,119,189,.1);
+  border: 1px solid var(--blue);
+  border-right-width: 4px;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--blue-2);
+}
+
+.warning-box {
+  background: rgba(255,167,38,.1);
+  border: 1px solid var(--orange);
+  border-right-width: 4px;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--orange-2);
+}
+
+.success-box {
+  background: rgba(56,142,60,.1);
+  border: 1px solid var(--green);
+  border-right-width: 4px;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--green-2);
+}
+
+.danger-box {
+  background: rgba(198,40,40,.1);
+  border: 1px solid var(--red);
+  border-right-width: 4px;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--red-2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🏷️ الشارات
+   ═══════════════════════════════════════════════════════════════════ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  gap: 3px;
+}
+
+.badge-gold {
+  background: rgba(212,175,55,.15);
+  color: var(--gold);
+  border: 1px solid rgba(212,175,55,.3);
+}
+
+.badge-green {
+  background: rgba(56,142,60,.15);
+  color: var(--green-2);
+  border: 1px solid rgba(56,142,60,.3);
+}
+
+.badge-red {
+  background: rgba(198,40,40,.15);
+  color: var(--red-2);
+  border: 1px solid rgba(198,40,40,.3);
+}
+
+.badge-orange {
+  background: rgba(255,167,38,.15);
+  color: var(--orange-2);
+  border: 1px solid rgba(255,167,38,.3);
+}
+
+.badge-blue {
+  background: rgba(2,119,189,.15);
+  color: var(--blue-2);
+  border: 1px solid rgba(2,119,189,.3);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📭 الحالة الفارغة
+   ═══════════════════════════════════════════════════════════════════ */
+.empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-3);
+}
+
+.empty .ico {
+  font-size: 72px;
+  margin-bottom: 14px;
+  opacity: .35;
+  filter: grayscale(.5);
+}
+
+.empty p {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ⚙️ Spin Loading
+   ═══════════════════════════════════════════════════════════════════ */
+.spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid rgba(212,175,55,.2);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-full {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px;
+  color: var(--gold);
+  font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📱 شريط جانبي (Side Menu)
+   ═══════════════════════════════════════════════════════════════════ */
+.side-menu {
+  position: fixed;
+  top: 0;
+  right: -300px;
+  width: 280px;
+  height: 100vh;
+  background: linear-gradient(180deg, #0f0f0f, #000);
+  border-left: 2px solid var(--gold);
+  z-index: 3000;
+  transition: right .3s ease;
+  overflow-y: auto;
+  padding: calc(20px + var(--safe-top)) 20px 20px;
+  box-shadow: -10px 0 40px rgba(0,0,0,.9);
+}
+
+.side-menu.open {
+  right: 0;
+}
+
+.side-menu h2 {
+  color: var(--gold);
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(212,175,55,.2);
+  font-size: 18px;
+}
+
+.side-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s ease;
+  margin-bottom: 6px;
+  border: 1px solid transparent;
+}
+
+.side-menu-item:active {
+  background: rgba(212,175,55,.12);
+  border-color: var(--gold);
+}
+
+.side-menu-item .sm-icon {
+  font-size: 22px;
+}
+
+.side-menu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.7);
+  z-index: 2999;
+  display: none;
+  backdrop-filter: blur(4px);
+}
+
+.side-menu-overlay.open {
+  display: block;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📜 Scrollbar
+   ═══════════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--gold), var(--gold-2));
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gold);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📊 الجدول
+   ═══════════════════════════════════════════════════════════════════ */
+.invoice-items {
+  margin: 10px 12px;
+  background: linear-gradient(180deg, rgba(20,20,20,.96), rgba(10,10,10,.96));
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0,0,0,.5);
+}
+
+.invoice-items table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.invoice-items th {
+  background: linear-gradient(135deg, var(--gold), var(--gold-2));
+  color: #000;
+  padding: 12px 6px;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.invoice-items td {
+  padding: 10px 6px;
+  text-align: center;
+  border-bottom: 1px solid rgba(212,175,55,.1);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.invoice-items td input {
+  width: 70px;
+  padding: 6px;
+  text-align: center;
+  background: #0a0a0a;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--gold);
+  font-family: inherit;
+  font-weight: 700;
+}
+
+.invoice-items td input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 8px var(--gold-soft);
+}
+
+.invoice-items tr:last-child td {
+  border-bottom: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   💰 إجمالي الفاتورة
+   ═══════════════════════════════════════════════════════════════════ */
+.invoice-total {
+  background: linear-gradient(180deg, rgba(20,20,20,.98), rgba(10,10,10,.98));
+  border: 1.5px solid var(--gold);
+  padding: 16px;
+  margin: 10px 12px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  box-shadow: 0 0 25px var(--gold-soft);
+  position: relative;
+}
+
+.invoice-total .row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(212,175,55,.08);
+}
+
+.invoice-total .row:last-child {
+  border-bottom: none;
+}
+
+.invoice-total .row input {
+  width: 120px;
+  padding: 7px 8px;
+  text-align: center;
+  background: #0a0a0a;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  color: var(--gold);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.invoice-total .row input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 10px var(--gold-soft);
+}
+
+.invoice-total .row.total {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--gold);
+  border-top: 2px dashed var(--gold);
+  margin-top: 8px;
+  padding-top: 12px;
+  border-bottom: none;
+  text-shadow: 0 0 12px var(--gold-glow);
+}
+
+.invoice-total .remaining-row {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--orange-2);
+}
+
+.invoice-total .remaining-row span:last-child {
+  color: var(--orange-2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📱 استجابة الشاشات الصغيرة
+   ═══════════════════════════════════════════════════════════════════ */
+@media (max-width: 360px) {
+  .menu-tile .icon { font-size: 34px; }
+  .menu-tile .title { font-size: 12px; }
+  .stat-card .value { font-size: 17px; }
+  .auth-screen h1 { font-size: 22px; }
+  .topbar h1 { font-size: 14px; }
+  .btn { padding: 10px 14px; font-size: 13px; }
+}
+
+@media (min-width: 768px) {
+  .menu-grid { grid-template-columns: repeat(4, 1fr); }
+  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   🎭 تأثيرات إضافية
+   ═══════════════════════════════════════════════════════════════════ */
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, var(--gold) 0%, var(--gold-3) 50%, var(--gold) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3s linear infinite;
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     🎬 شاشة التحميل
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="screenLoading" class="loading-screen">
+  <div class="loading-logo">🏪</div>
+  <div class="loading-title">البسملة ERP</div>
+  <div class="loading-sub">الإصدار 2026.3</div>
+  <div class="loading-bar-container">
+    <div class="loading-bar-fill" id="loadProgress"></div>
+  </div>
+  <div class="loading-text">جاري التحميل...</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     👋 شاشة الترحيب
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="screenWelcome" class="auth-screen hidden">
+  <div class="auth-logo">🏪</div>
+  <h1>شركة البسملة</h1>
+  <p class="sub">لتجارة المشغولات الصينية</p>
+  <div class="auth-card">
+    <h2>مرحباً بك 👋</h2>
+    <div class="welcome-options">
+      <div class="welcome-option primary" onclick="App.showScreen('screenLogin')">
+        <div class="opt-icon">🔑</div>
+        <div class="opt-text">
+          <div class="opt-title">تسجيل دخول</div>
+          <div class="opt-desc">للمستخدمين المسجلين مسبقاً</div>
+        </div>
+      </div>
+      <div class="welcome-option" onclick="App.showScreen('screenCreateCompany')">
+        <div class="opt-icon">🏢</div>
+        <div class="opt-text">
+          <div class="opt-title">إنشاء شركة جديدة</div>
+          <div class="opt-desc">للمدير — أول مرة فقط</div>
+        </div>
+      </div>
+      <div class="welcome-option" onclick="App.showScreen('screenJoinCompany')">
+        <div class="opt-icon">🔗</div>
+        <div class="opt-text">
+          <div class="opt-title">الانضمام لشركة موجودة</div>
+          <div class="opt-desc">للموظفين الجدد — بمعرف الشركة</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     🔑 شاشة تسجيل الدخول
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="screenLogin" class="auth-screen hidden">
+  <div class="auth-logo">🔑</div>
+  <h1>تسجيل الدخول</h1>
+  <p class="sub">شركة البسملة</p>
+  <div class="auth-card">
+    <div id="loginError" class="auth-error hidden"></div>
+    <label>البريد الإلكتروني</label>
+    <input type="email" id="loginEmail" placeholder="you@example.com" inputmode="email" autocomplete="email">
+    <label>كلمة المرور</label>
+    <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+    <button class="auth-btn" id="loginBtn" onclick="Auth.doLogin()">🔓 دخول</button>
+    <button class="auth-btn auth-btn-secondary" onclick="App.showScreen('screenWelcome')">← رجوع</button>
+    <p class="auth-info">
+      نسيت كلمة المرور؟
+      <a href="#" onclick="Auth.forgotPassword();return false;">إعادة تعيين</a>
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     🏢 شاشة إنشاء شركة جديدة
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="screenCreateCompany" class="auth-screen hidden">
+  <div class="auth-logo">🏢</div>
+  <h1>إنشاء شركة جديدة</h1>
+  <p class="sub">خطوة واحدة فقط</p>
+  <div class="auth-card">
+    <div id="createError" class="auth-error hidden"></div>
+    <label>اسم الشركة *</label>
+    <input type="text" id="ccCompanyName" placeholder="شركة البسملة" value="شركة البسملة">
+    <label>اسمك الكامل *</label>
+    <input type="text" id="ccAdminName" placeholder="مثال: خالد أحمد">
+    <label>البريد الإلكتروني *</label>
+    <input type="email" id="ccEmail" placeholder="admin@albasmala.com" inputmode="email">
+    <label>كلمة المرور * (6 أحرف على الأقل)</label>
+    <input type="password" id="ccPassword" placeholder="••••••••">
+    <label>تأكيد كلمة المرور *</label>
+    <input type="password" id="ccPassword2" placeholder="••••••••">
+    <button class="auth-btn" id="createBtn" onclick="Auth.doCreateCompany()">🚀 إنشاء الشركة</button>
+    <button class="auth-btn auth-btn-secondary" onclick="App.showScreen('screenWelcome')">← رجوع</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     🆔 شاشة عرض معرف الشركة
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="screenShowCompanyId" class="auth-screen hidden">
+  <div class="auth-logo">✅</div>
+  <h1>تم إنشاء الشركة</h1>
+  <p class="sub">احفظ هذا المعرّف</p>
+  <div class="auth-card">
+    <div class="success-box">✅ تم إنشاء شركتك بنجاح!</div>
+    <p class="auth-info">احفظ معرّف الشركة — ستحتاجه لإضافة الموظفين:</p>
+    <div class="company-id-display">
+      <div class="label">معرّف الشركة</div>
+      <div class="value" id="companyIdValue">----</div>
+      <button class="copy-btn" onclick="App.copyCompanyId()">📋 نسخ</button>
+    </div>
+    <div class="warning-box">⚠️ احفظ المعرّف الآن! لن يظهر مرة أخرى بنفس الطريقة.</div>
+    <button class="auth-btn" onclick="Auth.enterApp()">✓ فهمت — ادخل التطبيق</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     🔗 شاشة الانضمام لشركة
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="screenJoinCompany" class="auth-screen hidden">
+  <div class="auth-logo">🔗</div>
+  <h1>الانضمام لشركة</h1>
+  <p class="sub">أدخل بياناتك</p>
+  <div class="auth-card">
+    <div id="joinError" class="auth-error hidden"></div>
+    <label>معرّف الشركة *</label>
+    <input type="text" id="jcCompanyId" placeholder="ALB-XXXX-XXXX" style="text-transform:uppercase;letter-spacing:2px;font-family:'Courier New',monospace;">
+    <label>اسمك الكامل *</label>
+    <input type="text" id="jcName" placeholder="مثال: محمد علي">
+    <label>البريد الإلكتروني *</label>
+    <input type="email" id="jcEmail" placeholder="you@example.com" inputmode="email">
+    <label>كلمة المرور * (6 أحرف على الأقل)</label>
+    <input type="password" id="jcPassword" placeholder="••••••••">
+    <label>الدور الوظيفي *</label>
+    <select id="jcRole">
+      <option value="sales">مبيعات</option>
+      <option value="purchases">مشتريات</option>
+      <option value="warehouse">أمين مخزن</option>
+      <option value="accountant">محاسب</option>
+      <option value="hr">موارد بشرية</option>
+    </select>
+    <button class="auth-btn" id="joinBtn" onclick="Auth.doJoinCompany()">📩 إرسال طلب الانضمام</button>
+    <button class="auth-btn auth-btn-secondary" onclick="App.showScreen('screenWelcome')">← رجوع</button>
+    <p class="auth-info" style="font-size:11px;">سيصل طلبك للمدير للموافقة عليه</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     ⏳ شاشة في انتظار الموافقة
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="screenPendingApproval" class="auth-screen hidden">
+  <div class="auth-logo">⏳</div>
+  <h1>في انتظار الموافقة</h1>
+  <p class="sub">طلبك قيد المراجعة</p>
+  <div class="auth-card">
+    <div class="info-box">
+      تم إرسال طلبك للمدير.<br>
+      سيتم إشعارك فور الموافقة.<br>
+      <strong style="color:var(--gold);">يرجى الانتظار...</strong>
+    </div>
+    <div class="loading-full">
+      <div class="spinner"></div>
+      <span>جاري التحقق...</span>
+    </div>
+    <button class="auth-btn auth-btn-secondary" onclick="Auth.logout()" style="margin-top:14px;">← إلغاء وتسجيل خروج</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     🏪 التطبيق الرئيسي
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="mainApp" class="hidden">
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       🔝 الشريط العلوي
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="topbar">
+    <button class="icon-btn" onclick="App.goBack()" title="رجوع" id="backBtn">←</button>
+    <h1 id="appTitle">🏪 البسملة</h1>
+    <div class="topbar-actions">
+      <button class="icon-btn" onclick="App.toggleSideMenu()" title="القائمة">☰</button>
+      <button class="icon-btn" onclick="Calculator.open()" title="الحاسبة">🧮</button>
+      <button class="icon-btn" onclick="App.exitApp()" title="خروج">⏻</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       ☁️ شريط المزامنة
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="sync-bar">
+    <div class="status">
+      <span class="dot" id="syncDot"></span>
+      <span id="syncText">جاري الاتصال...</span>
+    </div>
+    <span id="deviceLabel">📱</span>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       🏠 الصفحة الرئيسية
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-home" class="page">
+    <div id="dashboardStats" class="stats-grid"></div>
+    <div id="pendingRequestsBanner"></div>
+    <div class="menu-grid" id="menuGrid"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       👆 صفحة الحضور والانصراف
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-attendance" class="page hidden">
+    <div class="tabs">
+      <div class="tab active" onclick="Attendance.switchTab(event,'mark')">تسجيل</div>
+      <div class="tab" onclick="Attendance.switchTab(event,'report')">التقرير</div>
+      <div class="tab" onclick="Attendance.switchTab(event,'map')">الخريطة</div>
+    </div>
+    <div id="att-mark">
+      <div id="locationStatus"></div>
+      <div id="attMarkList"></div>
+    </div>
+    <div id="att-report" class="hidden">
+      <div class="search-bar">
+        <span>📅</span>
+        <input type="date" id="attFrom">
+        <input type="date" id="attTo">
+        <button class="btn btn-primary btn-sm" onclick="Attendance.loadReport()">عرض</button>
+      </div>
+      <div id="attReportList"></div>
+    </div>
+    <div id="att-map" class="hidden">
+      <div class="map-container">
+        <div id="map"></div>
+        <button class="btn btn-primary btn-full" onclick="Attendance.refreshMap()">🔄 تحديث المواقع</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       📋 صفحة الموارد البشرية HR
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-hr" class="page hidden">
+    <div class="tabs">
+      <div class="tab active" onclick="HR.switchTab(event,'overview')">نظرة عامة</div>
+      <div class="tab" onclick="HR.switchTab(event,'leaves')">إجازات</div>
+      <div class="tab" onclick="HR.switchTab(event,'advances')">سلف</div>
+      <div class="tab" onclick="HR.switchTab(event,'bonuses')">مكافآت</div>
+    </div>
+    <div id="hr-overview" class="hr-panel"></div>
+    <div id="hr-leaves" class="hr-panel hidden"></div>
+    <div id="hr-advances" class="hr-panel hidden"></div>
+    <div id="hr-bonuses" class="hr-panel hidden"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       👥 صفحة الموظفين
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-employees" class="page hidden">
+    <div class="search-bar">
+      <span>🔍</span>
+      <input type="text" id="empSearch" placeholder="ابحث بالاسم أو الكود..." oninput="Employees.search()">
+    </div>
+    <div id="empList"></div>
+    <button class="fab" onclick="Employees.edit()" id="empAddBtn">+</button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       📦 صفحة المنتجات
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-products" class="page hidden">
+    <div class="search-bar">
+      <span>🔍</span>
+      <input type="text" id="prodSearch" placeholder="ابحث بالاسم أو الباركود..." oninput="Products.search()">
+      <button class="btn btn-primary btn-sm" onclick="Scanner.open('search')">📷</button>
+    </div>
+    <div id="prodList"></div>
+    <button class="fab" onclick="Products.edit()" id="prodAddBtn">+</button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       🤝 صفحة العملاء والموردين
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-partners" class="page hidden">
+    <div class="tabs">
+      <div class="tab active" onclick="Partners.switchTab(event,'customer')">العملاء</div>
+      <div class="tab" onclick="Partners.switchTab(event,'supplier')">الموردون</div>
+    </div>
+    <div class="search-bar">
+      <span>🔍</span>
+      <input type="text" id="partnerSearch" placeholder="ابحث..." oninput="Partners.search()">
+    </div>
+    <div id="partnerList"></div>
+    <button class="fab" onclick="Partners.edit()" id="partnerAddBtn">+</button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       🛒 صفحة فاتورة المبيعات
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-sales" class="page hidden">
+    <div class="card">
+      <h3>🛒 فاتورة مبيعات جديدة</h3>
+      <div class="form-group">
+        <label>العميل *</label>
+        <div style="display:flex;gap:6px;">
+          <select id="saleCustomer" style="flex:1;"></select>
+          <button class="btn btn-primary btn-sm" onclick="Partners.quickAdd('customer')">+</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>إضافة منتج (يظهر الرصيد)</label>
+        <div style="display:flex;gap:6px;">
+          <select id="saleProduct" style="flex:1;"></select>
+          <button class="btn btn-info btn-sm" onclick="Scanner.open('sale')" title="مسح باركود">📷</button>
+          <button class="btn btn-success btn-sm" onclick="Sales.addItem()">➕</button>
+        </div>
+      </div>
+    </div>
+    <div class="invoice-items">
+      <table>
+        <thead>
+          <tr>
+            <th>المنتج</th>
+            <th>الكمية</th>
+            <th>السعر</th>
+            <th>الإجمالي</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="saleItemsBody"></tbody>
+      </table>
+    </div>
+    <div class="invoice-total">
+      <div class="row"><span>الإجمالي الفرعي:</span><span id="saleSubtotal">0.00</span></div>
+      <div class="row"><span>الخصم:</span><input type="number" id="saleDiscount" value="0" oninput="Sales.calcTotals()"></div>
+      <div class="row"><span>الضريبة:</span><input type="number" id="saleTax" value="0" oninput="Sales.calcTotals()"></div>
+      <div class="row total"><span>الإجمالي:</span><span id="saleTotal">0.00</span></div>
+      <div class="row"><span>المدفوع:</span><input type="number" id="salePaid" value="0" oninput="Sales.calcTotals()"></div>
+      <div class="row remaining-row"><span>الباقي (آجل):</span><span id="saleRemaining">0.00</span></div>
+      <div class="form-group" style="margin-top:12px;">
+        <label>طريقة الدفع</label>
+        <select id="salePayment">
+          <option>نقدي</option>
+          <option>بنكي</option>
+          <option>محفظة</option>
+          <option>آجل</option>
+        </select>
+      </div>
+      <button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="Sales.save()">📝 تسجيل الفاتورة</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       🚚 صفحة فاتورة المشتريات
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-purchase" class="page hidden">
+    <div class="card">
+      <h3>🚚 فاتورة مشتريات جديدة</h3>
+      <div class="form-group">
+        <label>المورد *</label>
+        <div style="display:flex;gap:6px;">
+          <select id="purSupplier" style="flex:1;"></select>
+          <button class="btn btn-primary btn-sm" onclick="Partners.quickAdd('supplier')">+</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>إضافة منتج (يظهر الرصيد)</label>
+        <div style="display:flex;gap:6px;">
+          <select id="purProduct" style="flex:1;"></select>
+          <button class="btn btn-info btn-sm" onclick="Scanner.open('purchase')" title="مسح باركود">📷</button>
+          <button class="btn btn-success btn-sm" onclick="Purchases.addItem()">➕</button>
+        </div>
+      </div>
+    </div>
+    <div class="invoice-items">
+      <table>
+        <thead>
+          <tr>
+            <th>المنتج</th>
+            <th>الكمية</th>
+            <th>السعر</th>
+            <th>الإجمالي</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="purItemsBody"></tbody>
+      </table>
+    </div>
+    <div class="invoice-total">
+      <div class="row"><span>الإجمالي الفرعي:</span><span id="purSubtotal">0.00</span></div>
+      <div class="row"><span>الخصم:</span><input type="number" id="purDiscount" value="0" oninput="Purchases.calcTotals()"></div>
+      <div class="row"><span>الضريبة:</span><input type="number" id="purTax" value="0" oninput="Purchases.calcTotals()"></div>
+      <div class="row total"><span>الإجمالي:</span><span id="purTotal">0.00</span></div>
+      <div class="row"><span>المدفوع:</span><input type="number" id="purPaid" value="0" oninput="Purchases.calcTotals()"></div>
+      <div class="row remaining-row"><span>الباقي (آجل):</span><span id="purRemaining">0.00</span></div>
+      <div class="form-group" style="margin-top:12px;">
+        <label>طريقة الدفع</label>
+        <select id="purPayment">
+          <option>نقدي</option>
+          <option>بنكي</option>
+          <option>محفظة</option>
+          <option>آجل</option>
+        </select>
+      </div>
+      <button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="Purchases.save()">📝 تسجيل الفاتورة</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       ↩️ صفحة المرتجعات
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-returns" class="page hidden">
+    <div class="tabs">
+      <div class="tab active" onclick="Returns.switchTab(event,'sales')">مرتجع مبيعات</div>
+      <div class="tab" onclick="Returns.switchTab(event,'purchase')">مرتجع مشتريات</div>
+    </div>
+    <div class="card">
+      <h3>↩️ تسجيل مرتجع</h3>
+      <div class="form-group">
+        <label id="retPartyLabel">العميل</label>
+        <select id="retParty"></select>
+      </div>
+      <div class="form-group">
+        <label>إضافة منتج</label>
+        <div style="display:flex;gap:6px;">
+          <select id="retProduct" style="flex:1;"></select>
+          <button class="btn btn-info btn-sm" onclick="Scanner.open('return')">📷</button>
+          <button class="btn btn-success btn-sm" onclick="Returns.addItem()">➕</button>
+        </div>
+      </div>
+    </div>
+    <div class="invoice-items">
+      <table>
+        <thead>
+          <tr>
+            <th>المنتج</th>
+            <th>الكمية</th>
+            <th>السعر</th>
+            <th>الإجمالي</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="retItemsBody"></tbody>
+      </table>
+    </div>
+    <div class="invoice-total">
+      <div class="row total"><span>إجمالي المرتجع:</span><span id="retTotal">0.00</span></div>
+      <div class="form-group" style="margin-top:12px;">
+        <label>طريقة التسوية</label>
+        <select id="retSettle">
+          <option value="refund">استرداد نقدي</option>
+          <option value="credit">خصم من الحساب</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>السبب</label>
+        <input type="text" id="retReason" placeholder="سبب الإرجاع">
+      </div>
+      <button class="btn btn-primary btn-full" onclick="Returns.save()">📝 تسجيل المرتجع</button>
+    </div>
+    <div class="card">
+      <h3>📜 سجل المرتجعات</h3>
+      <div id="returnsList"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       📋 صفحة الفواتير
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-invoices" class="page hidden">
+    <div class="tabs">
+      <div class="tab active" onclick="Invoices.switchTab(event,'sales')">المبيعات</div>
+      <div class="tab" onclick="Invoices.switchTab(event,'purchase')">المشتريات</div>
+    </div>
+    <div class="search-bar">
+      <span>🔍</span>
+      <input type="text" id="invSearch" placeholder="ابحث برقم الفاتورة..." oninput="Invoices.load()">
+    </div>
+    <div id="invList"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       🧾 صفحة السندات
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-vouchers" class="page hidden">
+    <div class="tabs">
+      <div class="tab active" onclick="Vouchers.switchTab(event,'receipt')">سندات القبض</div>
+      <div class="tab" onclick="Vouchers.switchTab(event,'payment')">سندات الدفع</div>
+    </div>
+    <div id="voucherList"></div>
+    <button class="fab" onclick="Vouchers.create()" id="voucherAddBtn">+</button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       💰 صفحة الخزينة
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-cash" class="page hidden">
+    <div class="stats-grid" id="cashStats"></div>
+    <div class="card">
+      <h3>💡 ملاحظة مهمة</h3>
+      <p style="font-size:13px;line-height:1.7;color:var(--text-2);">
+        حركة الخزينة الفعلية تتأثر فقط بـ
+        <strong style="color:var(--gold);">سندات القبض والدفع</strong>.
+        <br><br>
+        الرواتب والسلف والمكافآت تظهر في كشوف الموظفين، لكنها لا تُخصم من الخزينة إلا بسند صرف.
+      </p>
+      <button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="App.openPage('vouchers')">🧾 إنشاء سند</button>
+    </div>
+    <div class="search-bar">
+      <span>📅</span>
+      <input type="date" id="cashFrom">
+      <input type="date" id="cashTo">
+      <button class="btn btn-primary btn-sm" onclick="Cash.load()">عرض</button>
+    </div>
+    <div id="cashList"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       💵 صفحة المرتبات
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-payroll" class="page hidden">
+    <div class="tabs">
+      <div class="tab active" onclick="Payroll.switchTab(event,'generate')">إنشاء</div>
+      <div class="tab" onclick="Payroll.switchTab(event,'list')">السجل</div>
+    </div>
+    <div id="payroll-generate">
+      <div class="card">
+        <h3>💵 إنشاء مرتب شهري</h3>
+        <div class="form-group">
+          <label>الموظف</label>
+          <select id="payEmp"></select>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <div class="form-group" style="flex:1;">
+            <label>الشهر</label>
+            <select id="payMonth"></select>
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>السنة</label>
+            <input type="number" id="payYear" value="2026">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>مكافآت إضافية</label>
+          <input type="number" id="payBonus" value="0">
+        </div>
+        <div class="form-group">
+          <label>خصومات إضافية</label>
+          <input type="number" id="payDeduction" value="0">
+        </div>
+        <div class="info-box">
+          📊 يتم احتساب الخصومات تلقائياً:
+          <br>• خصم الغياب = (الراتب ÷ 30) × عدد أيام الغياب
+          <br>• خصم التأخير: أول ربع ساعة مجاناً | ثاني ربع = ربع يوم | ثالث ربع = نصف يوم | رابع ربع = يوم كامل
+        </div>
+        <button class="btn btn-primary btn-full" onclick="Payroll.generate()">✓ إنشاء المرتب</button>
+      </div>
+    </div>
+    <div id="payroll-list" class="hidden">
+      <div id="payrollList"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       💸 صفحة الإيرادات والمصروفات
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-expenses" class="page hidden">
+    <div class="tabs">
+      <div class="tab active" onclick="Expenses.switchTab(event,'expense')">مصروف</div>
+      <div class="tab" onclick="Expenses.switchTab(event,'revenue')">إيراد</div>
+    </div>
+    <div class="card">
+      <h3 id="expTitle">💸 إضافة مصروف</h3>
+      <div class="form-group">
+        <label>التصنيف</label>
+        <input id="expCategory" placeholder="كهرباء، إيجار، نقل...">
+      </div>
+      <div class="form-group">
+        <label>المبلغ</label>
+        <input type="number" id="expAmount" inputmode="decimal">
+      </div>
+      <div class="form-group">
+        <label>البيان</label>
+        <input id="expDesc" placeholder="وصف">
+      </div>
+      <button class="btn btn-primary btn-full" onclick="Expenses.save()">💾 حفظ</button>
+    </div>
+    <div id="expList"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       📊 صفحة التقارير
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-reports" class="page hidden">
+    <div class="tabs">
+      <div class="tab active" onclick="Reports.switchTab(event,'profit')">الأرباح</div>
+      <div class="tab" onclick="Reports.switchTab(event,'top')">الأكثر مبيعاً</div>
+      <div class="tab" onclick="Reports.switchTab(event,'low')">نواقص المخزون</div>
+    </div>
+    <div id="rep-profit">
+      <div class="search-bar">
+        <span>📅</span>
+        <input type="date" id="profFrom">
+        <input type="date" id="profTo">
+        <button class="btn btn-primary btn-sm" onclick="Reports.loadProfit()">عرض</button>
+      </div>
+      <div id="profResult"></div>
+    </div>
+    <div id="rep-top" class="hidden">
+      <div id="topProductsList"></div>
+    </div>
+    <div id="rep-low" class="hidden">
+      <div id="lowStockList"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       📑 صفحة كشوف الحسابات
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-statements" class="page hidden">
+    <div class="tabs">
+      <div class="tab active" onclick="Statements.switchTab(event,'partner')">عملاء/موردون</div>
+      <div class="tab" onclick="Statements.switchTab(event,'employee')">الموظفون</div>
+      <div class="tab" onclick="Statements.switchTab(event,'cash')">الخزينة</div>
+    </div>
+    <div id="stmt-partner">
+      <div class="search-bar">
+        <span>👤</span>
+        <select id="stmtPartner" onchange="Statements.loadPartner()" style="flex:1;background:transparent;border:none;color:var(--text);font-size:15px;outline:none;"></select>
+      </div>
+      <div id="stmtPartnerList"></div>
+    </div>
+    <div id="stmt-employee" class="hidden">
+      <div class="search-bar">
+        <span>👤</span>
+        <select id="stmtEmp" onchange="Statements.loadEmployee()" style="flex:1;background:transparent;border:none;color:var(--text);font-size:15px;outline:none;"></select>
+      </div>
+      <div id="stmtEmpList"></div>
+    </div>
+    <div id="stmt-cash" class="hidden">
+      <div class="search-bar">
+        <span>📅</span>
+        <input type="date" id="stmtCashFrom">
+        <input type="date" id="stmtCashTo">
+        <button class="btn btn-primary btn-sm" onclick="Statements.loadCash()">عرض</button>
+      </div>
+      <div id="stmtCashList"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       📖 صفحة لائحة العمل
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-policies" class="page hidden">
+    <div id="policyList"></div>
+    <button class="fab" onclick="Policies.add()" id="policyAddBtn">+</button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       💬 صفحة واتساب
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-whatsapp" class="page hidden">
+    <div class="card">
+      <h3>💬 إرسال رسالة واتساب</h3>
+      <div class="form-group">
+        <label>الجهة</label>
+        <select id="waPartner"></select>
+      </div>
+      <div class="form-group">
+        <label>القالب (اختياري)</label>
+        <select id="waTemplate" onchange="WhatsApp.applyTemplate()"></select>
+      </div>
+      <div class="form-group">
+        <label>الرسالة</label>
+        <textarea id="waMessage" rows="5" placeholder="اكتب رسالتك هنا..."></textarea>
+      </div>
+      <button class="btn btn-success btn-full" onclick="WhatsApp.send()">📤 إرسال عبر واتساب</button>
+    </div>
+    <div class="card">
+      <h3>📜 سجل الرسائل</h3>
+      <div id="waLog"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       📱 صفحة إدارة الأجهزة
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-devices" class="page hidden">
+    <div class="card">
+      <h3>📱 إدارة الأجهزة</h3>
+      <div class="info-box">
+        يمكنك هنا الموافقة على الأجهزة الجديدة أو رفضها.
+        الأجهزة المرفوضة لن تتمكن من استخدام التطبيق.
+      </div>
+      <div id="devicesList"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       📩 صفحة طلبات الانضمام
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-requests" class="page hidden">
+    <div class="card">
+      <h3>📩 طلبات الانضمام</h3>
+      <div class="info-box">
+        الطلبات التي تنتظر الموافقة على الانضمام للشركة.
+      </div>
+      <div id="requestsList"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       📍 صفحة نطاق الحضور (Geofencing)
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-geofence" class="page hidden">
+    <div class="card">
+      <h3>📍 إعداد نطاق الحضور</h3>
+      <p style="font-size:13px;color:var(--text-2);margin-bottom:12px;">
+        حدد الموقع والمسافة المسموح بها لتسجيل الحضور.
+        الموظفون لن يستطيعوا التسجيل خارج هذا النطاق.
+      </p>
+      <div class="form-group">
+        <label>اسم الموقع</label>
+        <input id="geoName" placeholder="مثال: المقر الرئيسي">
+      </div>
+      <div class="form-group">
+        <label>خط العرض (Latitude)</label>
+        <input id="geoLat" type="number" step="0.000001" placeholder="30.0444">
+      </div>
+      <div class="form-group">
+        <label>خط الطول (Longitude)</label>
+        <input id="geoLng" type="number" step="0.000001" placeholder="31.2357">
+      </div>
+      <div class="form-group">
+        <label>نطاق مسموح (بالمتر)</label>
+        <input id="geoRadius" type="number" value="100">
+      </div>
+      <button class="btn btn-info btn-full" onclick="Geofence.pickCurrent()" style="margin-bottom:8px;">📍 التقاط موقعي الحالي</button>
+      <button class="btn btn-primary btn-full" onclick="Geofence.save()">💾 حفظ النطاق</button>
+    </div>
+    <div id="geofenceList"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       ⚙️ صفحة الإعدادات
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-settings" class="page hidden">
+    <div class="card">
+      <h3>ℹ️ معلومات الحساب</h3>
+      <p id="userInfo" style="color:var(--gold);font-size:14px;font-weight:600;margin-bottom:6px;"></p>
+      <p id="companyInfo" style="font-size:12px;color:var(--text-2);"></p>
+    </div>
+    <div class="card">
+      <h3>☁️ المزامنة</h3>
+      <div id="syncInfo" style="padding:12px;background:rgba(212,175,55,.06);border-radius:10px;font-size:13px;margin-bottom:12px;border:1px solid rgba(212,175,55,.15);"></div>
+      <button class="btn btn-primary btn-full" onclick="Sync.force()">🔄 مزامنة الآن</button>
+    </div>
+    <div class="card">
+      <h3>🛠️ الأدوات</h3>
+      <button class="btn btn-primary btn-full" onclick="Calculator.open()" style="margin-bottom:8px;">🧮 الحاسبة</button>
+      <button class="btn btn-info btn-full" onclick="Printer.test()" style="margin-bottom:8px;">🖨️ اختبار الطباعة</button>
+      <button class="btn btn-success btn-full" onclick="Biometric.test()" style="margin-bottom:8px;">👆 اختبار البصمة</button>
+      <button class="btn btn-warning btn-full" onclick="Scanner.test()" style="margin-bottom:8px;">📷 اختبار الكاميرا</button>
+      <button class="btn btn-info btn-full" onclick="LocationService.test()" style="margin-bottom:8px;">📍 اختبار الموقع</button>
+    </div>
+    <div class="card" id="adminTools">
+      <h3>🔐 أدوات المدير</h3>
+      <button class="btn btn-primary btn-full" onclick="Backup.export()" style="margin-bottom:8px;">💾 تصدير نسخة احتياطية</button>
+      <button class="btn btn-info btn-full" onclick="Backup.import()" style="margin-bottom:8px;">📂 استيراد نسخة</button>
+      <button class="btn btn-danger btn-full" onclick="Backup.clearUI()">🗑️ مسح بيانات الشركة</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       📜 صفحة سجل النشاطات
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="page-activity" class="page hidden">
+    <div id="activityList"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       🧭 شريط التنقل السفلي
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="bottom-nav">
+    <button class="nav-btn active" onclick="App.openPage('home')">
+      <span class="ico">🏠</span>
+      <span>الرئيسية</span>
+    </button>
+    <button class="nav-btn" onclick="App.openPage('sales')">
+      <span class="ico">🛒</span>
+      <span>مبيعات</span>
+    </button>
+    <button class="nav-btn" onclick="Calculator.open()">
+      <span class="ico">🧮</span>
+      <span>حاسبة</span>
+    </button>
+    <button class="nav-btn" onclick="App.openPage('invoices')">
+      <span class="ico">📋</span>
+      <span>الفواتير</span>
+    </button>
+    <button class="nav-btn" onclick="App.openPage('reports')">
+      <span class="ico">📊</span>
+      <span>تقارير</span>
+    </button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       📱 القائمة الجانبية
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="side-menu-overlay" id="sideMenuOverlay" onclick="App.closeSideMenu()"></div>
+  <div class="side-menu" id="sideMenu">
+    <h2>📋 القائمة الرئيسية</h2>
+    <div id="sideMenuContent"></div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     🎬 JavaScript المساعد (فقط للتنقل — كل المنطق في app.js)
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   🛡️ حماية أساسية
+   ═══════════════════════════════════════════════════════════════════ */
+// منع القائمة السياقية
+document.addEventListener('contextmenu', function(e) {
+  e.preventDefault();
+});
+
+// منع السحب لأسفل للتحديث
+document.addEventListener('touchmove', function(e) {
+  if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+
+// منع zoom بالإصبعين
+document.addEventListener('gesturestart', function(e) {
+  e.preventDefault();
+});
+
+// زر الرجوع لأندرويد
+document.addEventListener('backbutton', function(e) {
+  e.preventDefault();
+  if (typeof App !== 'undefined' && App.handleBack) {
+    App.handleBack();
+  }
+}, false);
+
+// حفظ آخر صفحة
+window.addEventListener('load', function() {
+  // مسح أي شاشات مخفية
+  setTimeout(function() {
+    const loading = document.getElementById('screenLoading');
+    if (loading) {
+      setTimeout(function() {
+        loading.style.opacity = '0';
+        setTimeout(function() {
+          loading.classList.add('hidden');
+        }, 500);
+      }, 2000);
+    }
+  }, 100);
+});
+
+// تتبع الشبكة
+window.addEventListener('online', function() {
+  if (typeof Sync !== 'undefined' && Sync.updateBar) Sync.updateBar();
+});
+window.addEventListener('offline', function() {
+  if (typeof Sync !== 'undefined' && Sync.updateBar) Sync.updateBar();
+});
+
+// تحذير عند الخروج
+window.addEventListener('beforeunload', function(e) {
+  if (typeof saleItems !== 'undefined' && saleItems.length > 0) {
+    e.preventDefault();
+    e.returnValue = 'لديك تعديلات غير محفوظة';
+    return e.returnValue;
+  }
+  if (typeof purItems !== 'undefined' && purItems.length > 0) {
+    e.preventDefault();
+    e.returnValue = 'لديك تعديلات غير محفوظة';
+    return e.returnValue;
+  }
+  if (typeof retItems !== 'undefined' && retItems.length > 0) {
+    e.preventDefault();
+    e.returnValue = 'لديك تعديلات غير محفوظة';
+    return e.returnValue;
+  }
+});
+
+// معلومات الإصدار
+console.log(
+  '%c🏪 البسملة ERP 2026.3',
+  'color:#D4AF37;font-size:18px;font-weight:bold;background:#000;padding:8px 16px;border:2px solid #D4AF37;border-radius:8px;text-shadow:0 0 10px rgba(212,175,55,.5);'
+);
+console.log(
+  '%c✅ النظام جاهز للعمل — Offline + Online',
+  'color:#66bb6a;font-size:13px;font-weight:bold;'
+);
+console.log(
+  '%c📱 اضغط على الأزرار للتنقل بين الصفحات',
+  'color:#42a5f5;font-size:12px;'
+);
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     🧠 ملف المنطق الرئيسي
+     ═══════════════════════════════════════════════════════════════════ -->
+<script src="app.js"></script>
+
+</body>
+</html>
