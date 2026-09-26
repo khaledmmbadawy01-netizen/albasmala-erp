@@ -1105,12 +1105,63 @@ const Scanner = {
     }
   },
   onResult(code) {
-    const target = State.barcodeTarget;
-    Scanner.stop().then(function () {
-      Scanner.handleBarcode(code, target);
-    });
-  },
-  handleBarcode(code, target) {
+  const target = State.barcodeTarget;
+  Scanner.stop().then(function () {
+    // اقفل المودال بس بعد ما ننفذ المهمة
+    const deferred = function(fn) {
+      setTimeout(fn, 100);
+    };
+    Scanner.handleBarcode(code, target, deferred);
+  });
+},
+  handleBarcode(code, target, deferred) {
+  const products = cache.products || [];
+  const p = products.find(function (x) {
+    return x.barcode === code || x.code === code;
+  });
+
+  if (target === 'search') {
+    Modal.close();
+    setTimeout(function () {
+      const el = document.getElementById('prodSearch');
+      if (el) { el.value = code; Products.search(code); }
+    }, 150);
+
+  } else if (target === 'field') {
+    // ⚠️ أهم إصلاح: نحط الكود في الحقل ثم نقفل المودال
+    const el = document.getElementById('p_barcode');
+    if (el) {
+      el.value = code;
+      Toast.show('✅ تم المسح: ' + code);
+    }
+    // اقفل المودال بعدين
+    setTimeout(function () { Modal.close(); }, 300);
+
+  } else if (target === 'sale') {
+    Modal.close();
+    setTimeout(function () {
+      if (!p) { Scanner.quickAddProduct(code, 'sale'); return; }
+      Sales.addItemById(p.id);
+      Toast.show('✅ ' + p.name);
+    }, 150);
+
+  } else if (target === 'purchase') {
+    Modal.close();
+    setTimeout(function () {
+      if (!p) { Scanner.quickAddProduct(code, 'purchase'); return; }
+      Purchases.addItemById(p.id);
+      Toast.show('✅ ' + p.name);
+    }, 150);
+
+  } else if (target === 'return') {
+    Modal.close();
+    setTimeout(function () {
+      if (!p) { Toast.show('منتج غير موجود: ' + code, 'error'); return; }
+      Returns.addItemById(p.id);
+      Toast.show('✅ ' + p.name);
+    }, 150);
+  }
+},
     const products = cache.products || [];
     const p = products.find(function (x) {
       return x.barcode === code || x.code === code;
