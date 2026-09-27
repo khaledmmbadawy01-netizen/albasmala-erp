@@ -1116,51 +1116,60 @@ const Scanner = {
   const p = products.find(function (x) {
     return x.barcode === code || x.code === code;
   });
-  
-  if (target === 'field') {
-    // أولاً: حط الكود في الحقل
-    const el = document.getElementById('p_barcode');
-    if (el) {
-      el.value = code;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-      Toast.show('✅ تم المسح: ' + code);
-    }
-    // ثانياً: اقفل المودال بعد 600ms (وقت كافي لتحديث الحقل)
-    setTimeout(function () { 
+
+  // دالة مساعدة لإغلاق المودال بأمان
+  const safeCloseModal = function() {
+    try {
       const m = document.querySelector('.modal-overlay');
       if (m) m.remove();
       State._modalCallback = null;
-    }, 600);
+    } catch (e) { }
+  };
+
+  if (target === 'field') {
+    // ⚠️ نحط الكود في الحقل الأول
+    try {
+      const el = document.getElementById('p_barcode');
+      if (el) {
+        el.value = code;
+        Toast.show('✅ تم المسح: ' + code);
+      }
+    } catch (e) { }
+    // ثم نقفل المودال بعد تأخير
+    setTimeout(safeCloseModal, 700);
     return;
   }
-  
+
   if (target === 'search') {
-    const m = document.querySelector('.modal-overlay');
-    if (m) m.remove();
+    safeCloseModal();
     setTimeout(function () {
-      const el = document.getElementById('prodSearch');
-      if (el) { el.value = code; Products.search(code); }
+      try {
+        const el = document.getElementById('prodSearch');
+        if (el) { el.value = code; Products.search(code); }
+      } catch (e) { }
     }, 300);
     return;
   }
-  
-  // الباقي (sale, purchase, return)
-  const m = document.querySelector('.modal-overlay');
-  if (m) m.remove();
+
+  // الباقي: sale, purchase, return
+  safeCloseModal();
   setTimeout(function () {
-    if (target === 'sale') {
-      if (!p) { Scanner.quickAddProduct(code, 'sale'); return; }
-      Sales.addItemById(p.id);
-      Toast.show('✅ ' + p.name);
-    } else if (target === 'purchase') {
-      if (!p) { Scanner.quickAddProduct(code, 'purchase'); return; }
-      Purchases.addItemById(p.id);
-      Toast.show('✅ ' + p.name);
-    } else if (target === 'return') {
-      if (!p) { Toast.show('منتج غير موجود: ' + code, 'error'); return; }
-      Returns.addItemById(p.id);
-      Toast.show('✅ ' + p.name);
+    try {
+      if (target === 'sale') {
+        if (!p) { Scanner.quickAddProduct(code, 'sale'); return; }
+        Sales.addItemById(p.id);
+        Toast.show('✅ ' + p.name);
+      } else if (target === 'purchase') {
+        if (!p) { Scanner.quickAddProduct(code, 'purchase'); return; }
+        Purchases.addItemById(p.id);
+        Toast.show('✅ ' + p.name);
+      } else if (target === 'return') {
+        if (!p) { Toast.show('منتج غير موجود: ' + code, 'error'); return; }
+        Returns.addItemById(p.id);
+        Toast.show('✅ ' + p.name);
+      }
+    } catch (e) {
+      Toast.show('خطأ: ' + e.message, 'error');
     }
   }, 300);
 },
