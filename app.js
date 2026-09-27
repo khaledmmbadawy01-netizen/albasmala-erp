@@ -402,34 +402,40 @@ const Toast = {
    6. Modal System
    ═══════════════════════════════════════════════════════════════════ */
 const Modal = {
-  open(title, bodyHtml, onSave, cancelText) {
-    cancelText = cancelText || 'إغلاق';
-    State._modalCallback = onSave;
+  open(title, bodyHtml, onSave, cancelText, allowStack) {
+  cancelText = cancelText || 'إغلاق';
+  State._modalCallback = onSave;
+  // ⚠️ لو allowStack مش مفعّل، نشيل أي مودال موجود
+  if (!allowStack) {
     const existing = document.querySelector('.modal-overlay');
     if (existing) existing.remove();
-    const html =
-      '<div class="modal-overlay" onclick="if(event.target===this)Modal.close()">' +
-        '<div class="modal">' +
-          '<h3>' + title + '</h3>' +
-          '<div id="modalBody">' + bodyHtml + '</div>' +
-          (onSave
-            ? '<div style="display:flex;gap:8px;margin-top:16px;">' +
-                '<button class="btn btn-primary btn-full" onclick="Modal.confirm()">✓ حفظ</button>' +
-                '<button class="btn btn-danger btn-full" onclick="Modal.close()">✕ ' + cancelText + '</button>' +
-              '</div>'
-            : '<div style="margin-top:16px;">' +
-                '<button class="btn btn-outline btn-full" onclick="Modal.close()">✓ ' + cancelText + '</button>' +
-              '</div>') +
-        '</div>' +
-      '</div>';
-    document.body.insertAdjacentHTML('beforeend', html);
-  },
+  }
+  const html =
+    '<div class="modal-overlay" onclick="if(event.target===this && !' + (allowStack ? 'true' : 'false') + ')Modal.close()">' +
+      '<div class="modal">' +
+        '<h3>' + title + '</h3>' +
+        '<div id="modalBody">' + bodyHtml + '</div>' +
+        (onSave
+          ? '<div style="display:flex;gap:8px;margin-top:16px;">' +
+              '<button class="btn btn-primary btn-full" onclick="Modal.confirm()">✓ حفظ</button>' +
+              '<button class="btn btn-danger btn-full" onclick="Modal.close()">✕ ' + cancelText + '</button>' +
+            '</div>'
+          : '<div style="margin-top:16px;">' +
+              '<button class="btn btn-outline btn-full" onclick="Modal.close()">✓ ' + cancelText + '</button>' +
+            '</div>') +
+      '</div>' +
+    '</div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+},
   close() {
-    const m = document.querySelector('.modal-overlay');
-    if (m) m.remove();
-    State._modalCallback = null;
-    Scanner.stop();
-  },
+  // ⚠️ نشيل آخر مودال بس (الأحدث)
+  const modals = document.querySelectorAll('.modal-overlay');
+  if (modals.length > 0) {
+    modals[modals.length - 1].remove();
+  }
+  State._modalCallback = null;
+  Scanner.stop();
+},
   confirm() {
     if (State._modalCallback) State._modalCallback();
   }
@@ -959,20 +965,21 @@ const Geofence = {
    ═══════════════════════════════════════════════════════════════════ */
 const Scanner = {
   open(target) {
-    State.barcodeTarget = target;
-    const html =
-      '<div style="text-align:center;">' +
-        '<p style="color:var(--text-2);font-size:12px;margin-bottom:10px;">وجّه الكاميرا نحو الباركود</p>' +
-        '<div id="reader" style="width:100%;max-width:340px;margin:0 auto;border-radius:12px;overflow:hidden;border:2px solid var(--gold);min-height:200px;background:#000;"></div>' +
-        '<div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;">' +
-          '<button class="btn btn-info btn-full" onclick="Scanner.manualEntry()">⌨️ إدخال يدوي</button>' +
-          '<button class="btn btn-warning btn-full" onclick="Scanner.fromGallery()">🖼️ من المعرض</button>' +
-          '<button class="btn btn-outline btn-full" onclick="Scanner.reportError()">⚠️ الكاميرا لا تعمل؟</button>' +
-        '</div>' +
-      '</div>';
-    Modal.open('📷 مسح الباركود', html, null, 'إغلاق');
-    setTimeout(function () { Scanner.start(); }, 300);
-  },
+  State.barcodeTarget = target;
+  const html =
+    '<div style="text-align:center;">' +
+      '<p style="color:var(--text-2);font-size:12px;margin-bottom:10px;">وجّه الكاميرا نحو الباركود</p>' +
+      '<div id="reader" style="width:100%;max-width:340px;margin:0 auto;border-radius:12px;overflow:hidden;border:2px solid var(--gold);min-height:200px;background:#000;"></div>' +
+      '<div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;">' +
+        '<button class="btn btn-info btn-full" onclick="Scanner.manualEntry()">⌨️ إدخال يدوي</button>' +
+        '<button class="btn btn-warning btn-full" onclick="Scanner.fromGallery()">🖼️ من المعرض</button>' +
+        '<button class="btn btn-outline btn-full" onclick="Scanner.reportError()">⚠️ الكاميرا لا تعمل؟</button>' +
+      '</div>' +
+    '</div>';
+  // ⚠️ allowStack = true → نحافظ على المودال اللي تحته
+  Modal.open('📷 مسح الباركود', html, null, 'إغلاق', true);
+  setTimeout(function () { Scanner.start(); }, 300);
+},
   async start() {
     const reader = document.getElementById('reader');
     if (!reader) return;
@@ -1112,34 +1119,47 @@ const Scanner = {
   });
 },
   handleBarcode(code, target) {
+  handleBarcode(code, target) {
   const products = cache.products || [];
   const p = products.find(function (x) {
     return x.barcode === code || x.code === code;
   });
 
-  // ⚠️ حالة 'field': نحط الكود في الحقل ونسيب المودال مفتوح
+  // ⚠️ حالة 'field': نحفظ الباركود ونقفل مودال الكاميرا
   if (target === 'field') {
+    // نحفظ الباركود في State
+    State.pendingBarcode = code;
+    Toast.show('✅ تم المسح: ' + code);
+
+    // نقفل مودال الكاميرا فقط
     try {
-      const el = document.getElementById('p_barcode');
-      if (el) {
-        el.value = code;
-        Toast.show('✅ تم المسح: ' + code);
+      if (State.scanner) {
+        State.scanner.stop().catch(function(){});
+        State.scanner = null;
       }
     } catch (e) { }
 
-    // نوقف الكاميرا فقط
-    setTimeout(function () {
-      try {
-        if (State.scanner) {
-          State.scanner.stop().catch(function(){});
-        }
-      } catch (e) { }
-    }, 100);
+    // نقفل المودال (مودال الكاميرا)
+    try {
+      const m = document.querySelector('.modal-overlay');
+      if (m) m.remove();
+      State._modalCallback = null;
+    } catch (e) { }
 
+    // بعد الإغلاق، نتحقق لو فيه مودال إضافة منتج مفتوح
+    // ونحط الباركود فيه
+    setTimeout(function () {
+      const el = document.getElementById('p_barcode');
+      if (el) {
+        el.value = code;
+        State.pendingBarcode = null;
+        Toast.show('✅ تم إدخال الباركود');
+      }
+    }, 400);
     return;
   }
 
-  // باقي الحالات: نقفل المودال
+  // باقي الحالات
   try {
     const m = document.querySelector('.modal-overlay');
     if (m) m.remove();
