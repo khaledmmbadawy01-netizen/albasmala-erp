@@ -720,199 +720,325 @@ const Biometric = {
 /* ═══════════════════════════════════════════════════════════════════
    10. Camera Helper
    ═══════════════════════════════════════════════════════════════════ */
-const CameraHelper = {
-  async capturePhoto() {
-    return new Promise(function (resolve) {
-      const html =
-        '<div style="text-align:center;">' +
-          '<video id="cameraPreview" autoplay playsinline muted style="width:100%;max-width:320px;border-radius:12px;border:2px solid var(--gold);"></video>' +
-          '<canvas id="cameraCanvas" style="display:none;"></canvas>' +
-          '<div style="margin-top:14px;display:flex;gap:8px;justify-content:center;">' +
-            '<button class="btn btn-primary" onclick="CameraHelper.takeSnapshot()">📸 التقاط</button>' +
-            '<button class="btn btn-warning" onclick="CameraHelper.captureFallback()">🖼️ من المعرض</button>' +
-          '</div>' +
-        '</div>';
-      Modal.open('📷 صورة إثبات', html, null, 'إغلاق');
-      setTimeout(async function () {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: { ideal: 640 } }
-          });
-          const video = document.getElementById('cameraPreview');
-          if (video) {
-            video.srcObject = stream;
-            CameraHelper._stream = stream;
-          }
-        } catch (e) {
-          Toast.show('⚠️ لا يمكن الوصول للكاميرا', 'error');
-          CameraHelper.captureFallback();
-        }
-      }, 300);
-      CameraHelper._resolve = resolve;
+const Scanner = {
+  open(target) {
+    State.barcodeTarget = target;
+    const html =
+      '<div style="text-align:center;">' +
+        '<p style="color:var(--text-2);font-size:12px;margin-bottom:10px;">وجّه الكاميرا نحو الباركود</p>' +
+        '<div id="reader" style="width:100%;max-width:340px;margin:0 auto;border-radius:12px;overflow:hidden;border:2px solid var(--gold);min-height:200px;background:#000;"></div>' +
+        '<div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;">' +
+          '<button class="btn btn-info btn-full" onclick="Scanner.manualEntry()">⌨️ إدخال يدوي</button>' +
+          '<button class="btn btn-warning btn-full" onclick="Scanner.fromGallery()">🖼️ من المعرض</button>' +
+          '<button class="btn btn-outline btn-full" onclick="Scanner.reportError()">⚠️ الكاميرا لا تعمل؟</button>' +
+        '</div>' +
+      '</div>';
+    Modal.open('📷 مسح الباركود', html, null, 'إغلاق', true);
+    setTimeout(function () { Scanner.start(); }, 300);
+  },
+
+  async start() {
+    const reader = document.getElementById('reader');
+    if (!reader) return;
+    if (typeof Html5Qrcode !== 'undefined') {
+      try {
+        State.scanner = new Html5Qrcode("reader");
+        await State.scanner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 260, height: 160 }, aspectRatio: 1.7 },
+          function (text) {
+            Utils.vibrate(100);
+            Scanner.onResult(text);
+          },
+          function () { }
+        );
+        return;
+      } catch (e) {
+        console.warn('html5-qrcode failed:', e);
+      }
+    }
+    if ('BarcodeDetector' in window) {
+      try {
+        await Scanner.startNative();
+        return;
+      } catch (e) {
+        console.warn('BarcodeDetector failed:', e);
+      }
+    }
+    Scanner.showManualOnly();
+  },
+
+  async startNative() {
+    const reader = document.getElementById('reader');
+    reader.innerHTML = '<video id="scanVideo" style="width:100%;border-radius:10px;" autoplay playsinline muted></video>';
+    const video = document.getElementById('scanVideo');
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
     });
+    video.srcObject = stream;
+    await video.play();
+    const detector = new BarcodeDetector({
+      formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'qr_code', 'codabar', 'itf']
+    });
+    const scanLoop = async function () {
+      if (!document.getElementById('scanVideo')) return;
+      try {
+        const barcodes = await detector.detect(video);
+        if (barcodes && barcodes.length > 0) {
+          Utils.vibrate(100);
+          Scanner.onResult(barcodes[0].rawValue);
+          return;
+        }
+      } catch (e) {}
+      if (document.getElementById('scanVideo')) {
+        requestAnimationFrame(scanLoop);
+      }
+    };
+    requestAnimationFrame(scanLoop);
   },
-  takeSnapshot() {
-    const video = document.getElementById('cameraPreview');
-    const canvas = document.getElementById('cameraCanvas');
-    if (!video || !canvas) return;
-    const maxW = 400;
-    let w = video.videoWidth, h = video.videoHeight;
-    if (w > h && w > maxW) { h = h * maxW / w; w = maxW; }
-    else if (h > maxW) { w = w * maxW / h; h = maxW; }
-    canvas.width = w;
-    canvas.height = h;
-    canvas.getContext('2d').drawImage(video, 0, 0, w, h);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-    CameraHelper._cleanup();
-    Modal.close();
-    Utils.vibrate(80);
-    if (CameraHelper._resolve) CameraHelper._resolve(dataUrl);
+
+  showManualOnly() {
+    const reader = document.getElementById('reader');
+    if (reader) {
+      reader.innerHTML =
+        '<div style="padding:30px;text-align:center;color:var(--orange-2);">' +
+          '<div style="font-size:40px;margin-bottom:10px;">📷</div>' +
+          '<p>الكاميرا غير متوفرة</p>' +
+          '<p style="font-size:12px;margin-top:8px;">استخدم الإدخال اليدوي أو المعرض</p>' +
+        '</div>';
+    }
   },
-  captureFallback() {
+
+  manualEntry() {
+    const html =
+      '<div class="form-group">' +
+        '<label>أدخل الباركود يدوياً</label>' +
+        '<input id="manualBarcode" placeholder="اكتب الباركود..." autofocus>' +
+      '</div>' +
+      '<button class="btn btn-primary btn-full" onclick="Scanner.submitManual()">✓ تأكيد</button>';
+    Modal.open('⌨️ إدخال يدوي', html, null, 'إغلاق');
+  },
+
+  submitManual() {
+    const code = document.getElementById('manualBarcode').value.trim();
+    if (!code) return Toast.show('أدخل الباركود', 'error');
+    // اقفل مودال الإدخال اليدوي
+    try {
+      const modals = document.querySelectorAll('.modal-overlay');
+      if (modals.length > 0) modals[modals.length - 1].remove();
+    } catch (e) {}
+    Scanner.handleBarcode(code, State.barcodeTarget);
+  },
+
+  fromGallery() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.capture = 'user';
-    input.onchange = function (e) {
+    input.onchange = async function (e) {
       const file = e.target.files[0];
       if (!file) return;
-const CameraHelper = {
-  async capturePhoto() {
-    return new Promise(function (resolve) {
-      const html =
-        '<div style="text-align:center;">' +
-          '<video id="cameraPreview" autoplay playsinline muted style="width:100%;max-width:320px;border-radius:12px;border:2px solid var(--gold);"></video>' +
-          '<canvas id="cameraCanvas" style="display:none;"></canvas>' +
-          '<div style="margin-top:14px;display:flex;gap:8px;justify-content:center;">' +
-            '<button class="btn btn-primary" onclick="CameraHelper.takeSnapshot()">📸 التقاط</button>' +
-            '<button class="btn btn-warning" onclick="CameraHelper.captureFallback()">🖼️ من المعرض</button>' +
-          '</div>' +
-        '</div>';
-      Modal.open('📷 صورة إثبات', html, null, 'إغلاق');
-      setTimeout(async function () {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: { ideal: 640 } }
-          });
-          const video = document.getElementById('cameraPreview');
-          if (video) {
-            video.srcObject = stream;
-            CameraHelper._stream = stream;
+      try {
+        if (typeof Html5Qrcode !== 'undefined') {
+          Toast.show('⏳ جاري تحليل الصورة...', 'info');
+          const scanner = new Html5Qrcode("reader");
+          const result = await scanner.scanFile(file, true);
+          Utils.vibrate(100);
+          Scanner.onResult(result);
+        } else if ('BarcodeDetector' in window) {
+          const img = new Image();
+          img.src = URL.createObjectURL(file);
+          await img.decode();
+          const detector = new BarcodeDetector();
+          const barcodes = await detector.detect(img);
+          if (barcodes.length > 0) {
+            Utils.vibrate(100);
+            Scanner.onResult(barcodes[0].rawValue);
+          } else {
+            Toast.show('❌ لم يتم العثور على باركود', 'error');
           }
-        } catch (e) {
-          Toast.show('⚠️ لا يمكن الوصول للكاميرا', 'error');
-          CameraHelper.captureFallback();
+        } else {
+          Toast.show('❌ غير مدعوم', 'error');
         }
-      }, 300);
-      CameraHelper._resolve = resolve;
-    });
-  },
-
-  takeSnapshot() {
-    const video = document.getElementById('cameraPreview');
-    const canvas = document.getElementById('cameraCanvas');
-    if (!video || !canvas) return;
-    const maxW = 400;
-    let w = video.videoWidth, h = video.videoHeight;
-    if (w > h && w > maxW) { h = h * maxW / w; w = maxW; }
-    else if (h > maxW) { w = w * maxW / h; h = maxW; }
-    canvas.width = w;
-    canvas.height = h;
-    canvas.getContext('2d').drawImage(video, 0, 0, w, h);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-    CameraHelper._cleanup();
-    Modal.close();
-    Utils.vibrate(80);
-    if (CameraHelper._resolve) CameraHelper._resolve(dataUrl);
-  },
-
-  captureFallback() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.capture = 'user';
-    input.onchange = function (e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function (ev) {
-        const img = new Image();
-        img.onload = function () {
-          const canvas = document.createElement('canvas');
-          const maxW = 400;
-          let w = img.width, h = img.height;
-          if (w > h && w > maxW) { h = h * maxW / w; w = maxW; }
-          else if (h > maxW) { w = w * maxW / h; h = maxW; }
-          canvas.width = w;
-          canvas.height = h;
-          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-          CameraHelper._cleanup();
-          Modal.close();
-          if (CameraHelper._resolve) CameraHelper._resolve(dataUrl);
-        };
-        img.src = ev.target.result;
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        Toast.show('❌ فشل التحليل: ' + err.message, 'error');
+      }
     };
     input.click();
   },
 
-  // ⚠️ التقاط صورة من الكاميرا مباشرة (للمنتجات)
-  async captureFromCamera() {
-    return new Promise(function (resolve) {
-      const html =
-        '<div style="text-align:center;">' +
-          '<video id="prodCameraPreview" autoplay playsinline muted style="width:100%;max-width:320px;border-radius:12px;border:2px solid var(--gold);"></video>' +
-          '<canvas id="prodCameraCanvas" style="display:none;"></canvas>' +
-          '<div style="margin-top:14px;display:flex;gap:8px;justify-content:center;">' +
-            '<button class="btn btn-primary" onclick="CameraHelper.takeProductSnapshot()">📸 التقاط</button>' +
-            '<button class="btn btn-warning" onclick="CameraHelper._resolve(null);Modal.close();">❌ إلغاء</button>' +
-          '</div>' +
-        '</div>';
-      Modal.open('📷 التقاط صورة المنتج', html, null, 'إلغاء', true);
-      CameraHelper._resolve = resolve;
-      setTimeout(async function () {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment', width: { ideal: 800 }, height: { ideal: 800 } }
-          });
-          const video = document.getElementById('prodCameraPreview');
-          if (video) {
-            video.srcObject = stream;
-            CameraHelper._stream = stream;
-          }
-        } catch (e) {
-          Toast.show('❌ فشل الوصول للكاميرا', 'error');
-          Modal.close();
-          resolve(null);
+  async stop() {
+    if (State.scanner) {
+      try {
+        await State.scanner.stop();
+        State.scanner.clear();
+      } catch (e) {}
+      State.scanner = null;
+    }
+    const video = document.getElementById('scanVideo');
+    if (video && video.srcObject) {
+      video.srcObject.getTracks().forEach(function (t) { t.stop(); });
+    }
+  },
+
+  onResult(code) {
+    const target = State.barcodeTarget;
+    Promise.resolve()
+      .then(function () { return Scanner.stop(); })
+      .catch(function (e) { console.warn('Scanner.stop error:', e); })
+      .then(function () {
+        Scanner.handleBarcode(code, target);
+      });
+  },
+
+  handleBarcode(code, target) {
+    const products = cache.products || [];
+    const p = products.find(function (x) {
+      return x.barcode === code || x.code === code;
+    });
+
+    // ⚠️ حالة 'field': نحط الكود في الحقل الأصلي
+    if (target === 'field') {
+      // 1. اقفل مودال الكاميرا
+      try {
+        const modals = document.querySelectorAll('.modal-overlay');
+        if (modals.length > 0) {
+          modals[modals.length - 1].remove();
         }
+      } catch (e) {}
+
+      // 2. حدّث الحقل
+      setTimeout(function () {
+        const el = document.getElementById('p_barcode');
+        if (el) {
+          el.value = code;
+          // ⚠️ حدّث State عشان لو المستخدم ضغط حفظ يتحفظ الكود
+          try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+          Toast.show('✅ تم إدخال الباركود: ' + code);
+        } else {
+          Toast.show('✅ تم المسح: ' + code, 'info');
+        }
+      }, 300);
+      return;
+    }
+
+    // ⚠️ حالة 'search'
+    if (target === 'search') {
+      try {
+        const modals = document.querySelectorAll('.modal-overlay');
+        if (modals.length > 0) modals[modals.length - 1].remove();
+      } catch (e) {}
+      setTimeout(function () {
+        try {
+          const el = document.getElementById('prodSearch');
+          if (el) { el.value = code; Products.search(code); }
+        } catch (e) { }
+      }, 300);
+      return;
+    }
+
+    // ⚠️ باقي الحالات: sale, purchase, return
+    try {
+      const modals = document.querySelectorAll('.modal-overlay');
+      if (modals.length > 0) modals[modals.length - 1].remove();
+    } catch (e) {}
+
+    setTimeout(function () {
+      try {
+        if (target === 'sale') {
+          if (!p) { Scanner.quickAddProduct(code, 'sale'); return; }
+          Sales.addItemById(p.id);
+          Toast.show('✅ ' + p.name);
+        } else if (target === 'purchase') {
+          if (!p) { Scanner.quickAddProduct(code, 'purchase'); return; }
+          Purchases.addItemById(p.id);
+          Toast.show('✅ ' + p.name);
+        } else if (target === 'return') {
+          if (!p) { Toast.show('منتج غير موجود: ' + code, 'error'); return; }
+          Returns.addItemById(p.id);
+          Toast.show('✅ ' + p.name);
+        }
+      } catch (e) {
+        Toast.show('خطأ: ' + e.message, 'error');
+      }
+    }, 300);
+  },
+
+  quickAddProduct(barcode, context) {
+    const html =
+      '<div class="warning-box">⚠️ المنتج غير موجود. هل تريد إضافته الآن؟</div>' +
+      '<div class="form-group"><label>اسم المنتج *</label><input id="qp_name" autofocus></div>' +
+      '<div class="form-group"><label>الباركود</label><input id="qp_barcode" value="' + Utils.esc(barcode) + '"></div>' +
+      '<div class="form-group"><label>الوحدة</label><input id="qp_unit" value="قطعة"></div>' +
+      '<div class="form-group"><label>سعر الشراء</label><input id="qp_cost" type="number" value="0"></div>' +
+      '<div class="form-group"><label>سعر البيع</label><input id="qp_sale" type="number" value="0"></div>' +
+      '<div class="form-group"><label>الكمية الحالية</label><input id="qp_qty" type="number" value="0"></div>';
+    Modal.open('➕ إضافة منتج جديد', html, async function () {
+      const name = document.getElementById('qp_name').value.trim();
+      if (!name) return Toast.show('اسم المنتج مطلوب', 'error');
+      const newId = Utils.genId('PRD');
+      const product = {
+        id: newId,
+        name: name,
+        barcode: document.getElementById('qp_barcode').value.trim(),
+        code: '',
+        unit: document.getElementById('qp_unit').value,
+        cost_price: parseFloat(document.getElementById('qp_cost').value) || 0,
+        sale_price: parseFloat(document.getElementById('qp_sale').value) || 0,
+        quantity: parseInt(document.getElementById('qp_qty').value) || 0,
+        min_quantity: 5,
+        image: '',
+        active: true,
+        created_at: Utils.nowISO()
+      };
+      await Sync.save('products', newId, product);
+      cache.products.push(product);
+      Modal.close();
+      Toast.show('✅ تم إضافة ' + name);
+      setTimeout(function () {
+        if (context === 'sale') Sales.addItemById(newId);
+        else if (context === 'purchase') Purchases.addItemById(newId);
       }, 300);
     });
   },
 
-  takeProductSnapshot() {
-    const video = document.getElementById('prodCameraPreview');
-    const canvas = document.getElementById('prodCameraCanvas');
-    if (!video || !canvas) return;
-    const maxW = 500;
-    let w = video.videoWidth, h = video.videoHeight;
-    if (w > h && w > maxW) { h = h * maxW / w; w = maxW; }
-    else if (h > maxW) { w = w * maxW / h; h = maxW; }
-    canvas.width = w;
-    canvas.height = h;
-    canvas.getContext('2d').drawImage(video, 0, 0, w, h);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-    CameraHelper._cleanup();
-    Modal.close();
-    Utils.vibrate(80);
-    if (CameraHelper._resolve) CameraHelper._resolve(dataUrl);
+  reportError() {
+    const html =
+      '<div class="warning-box">' +
+        '<p><strong>لتشغيل الكاميرا، تأكد من:</strong></p>' +
+        '<ul style="margin-top:8px;padding-right:20px;line-height:1.8;">' +
+          '<li>✅ السماح للتطبيق بالوصول للكاميرا</li>' +
+          '<li>✅ التطبيق يعمل على <strong>HTTPS</strong></li>' +
+          '<li>✅ لا يوجد تطبيق آخر يستخدم الكاميرا</li>' +
+          '<li>✅ إعادة تشغيل التطبيق بعد منح الصلاحية</li>' +
+        '</ul>' +
+      '</div>' +
+      '<button class="btn btn-primary btn-full" onclick="Scanner.testPermission()" style="margin-top:12px;">🔓 طلب الصلاحية الآن</button>' +
+      '<button class="btn btn-info btn-full" onclick="Scanner.openSettings()" style="margin-top:8px;">⚙️ إعدادات الصلاحيات</button>';
+    Modal.open('⚠️ مساعدة الكاميرا', html, null, 'إغلاق');
   },
 
-  _cleanup() {
-    if (CameraHelper._stream) {
-      CameraHelper._stream.getTracks().forEach(function (t) { t.stop(); });
-      CameraHelper._stream = null;
+  async testPermission() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      Toast.show('✅ تم منح الصلاحية — أعد المحاولة');
+      Modal.close();
+    } catch (e) {
+      Toast.show('❌ رفض الصلاحية: ' + e.message, 'error');
+    }
+  },
+
+  openSettings() {
+    Toast.show('افتح: الإعدادات → التطبيقات → البسملة ERP → الأذونات → الكاميرا', 'info');
+  },
+
+  async test() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      Toast.show('✅ الكاميرا تعمل');
+    } catch (e) {
+      Toast.show('❌ ' + e.message, 'error');
     }
   }
 };
