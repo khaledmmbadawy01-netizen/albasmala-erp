@@ -1117,17 +1117,8 @@ const Scanner = {
     return x.barcode === code || x.code === code;
   });
 
-  // دالة مساعدة لإغلاق المودال بأمان
-  const safeCloseModal = function() {
-    try {
-      const m = document.querySelector('.modal-overlay');
-      if (m) m.remove();
-      State._modalCallback = null;
-    } catch (e) { }
-  };
-
+  // ⚠️ حالة 'field': نحط الكود في الحقل ونسيب المودال مفتوح
   if (target === 'field') {
-    // ⚠️ نحط الكود في الحقل الأول
     try {
       const el = document.getElementById('p_barcode');
       if (el) {
@@ -1135,13 +1126,27 @@ const Scanner = {
         Toast.show('✅ تم المسح: ' + code);
       }
     } catch (e) { }
-    // ثم نقفل المودال بعد تأخير
-    setTimeout(safeCloseModal, 700);
+
+    // نوقف الكاميرا فقط
+    setTimeout(function () {
+      try {
+        if (State.scanner) {
+          State.scanner.stop().catch(function(){});
+        }
+      } catch (e) { }
+    }, 100);
+
     return;
   }
 
+  // باقي الحالات: نقفل المودال
+  try {
+    const m = document.querySelector('.modal-overlay');
+    if (m) m.remove();
+    State._modalCallback = null;
+  } catch (e) { }
+
   if (target === 'search') {
-    safeCloseModal();
     setTimeout(function () {
       try {
         const el = document.getElementById('prodSearch');
@@ -1151,8 +1156,6 @@ const Scanner = {
     return;
   }
 
-  // الباقي: sale, purchase, return
-  safeCloseModal();
   setTimeout(function () {
     try {
       if (target === 'sale') {
