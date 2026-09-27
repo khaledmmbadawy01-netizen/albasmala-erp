@@ -776,6 +776,64 @@ const CameraHelper = {
     input.onchange = function (e) {
       const file = e.target.files[0];
       if (!file) return;
+const CameraHelper = {
+  async capturePhoto() {
+    return new Promise(function (resolve) {
+      const html =
+        '<div style="text-align:center;">' +
+          '<video id="cameraPreview" autoplay playsinline muted style="width:100%;max-width:320px;border-radius:12px;border:2px solid var(--gold);"></video>' +
+          '<canvas id="cameraCanvas" style="display:none;"></canvas>' +
+          '<div style="margin-top:14px;display:flex;gap:8px;justify-content:center;">' +
+            '<button class="btn btn-primary" onclick="CameraHelper.takeSnapshot()">📸 التقاط</button>' +
+            '<button class="btn btn-warning" onclick="CameraHelper.captureFallback()">🖼️ من المعرض</button>' +
+          '</div>' +
+        '</div>';
+      Modal.open('📷 صورة إثبات', html, null, 'إغلاق');
+      setTimeout(async function () {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user', width: { ideal: 640 } }
+          });
+          const video = document.getElementById('cameraPreview');
+          if (video) {
+            video.srcObject = stream;
+            CameraHelper._stream = stream;
+          }
+        } catch (e) {
+          Toast.show('⚠️ لا يمكن الوصول للكاميرا', 'error');
+          CameraHelper.captureFallback();
+        }
+      }, 300);
+      CameraHelper._resolve = resolve;
+    });
+  },
+
+  takeSnapshot() {
+    const video = document.getElementById('cameraPreview');
+    const canvas = document.getElementById('cameraCanvas');
+    if (!video || !canvas) return;
+    const maxW = 400;
+    let w = video.videoWidth, h = video.videoHeight;
+    if (w > h && w > maxW) { h = h * maxW / w; w = maxW; }
+    else if (h > maxW) { w = w * maxW / h; h = maxW; }
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+    CameraHelper._cleanup();
+    Modal.close();
+    Utils.vibrate(80);
+    if (CameraHelper._resolve) CameraHelper._resolve(dataUrl);
+  },
+
+  captureFallback() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'user';
+    input.onchange = function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
       const reader = new FileReader();
       reader.onload = function (ev) {
         const img = new Image();
@@ -799,6 +857,58 @@ const CameraHelper = {
     };
     input.click();
   },
+
+  // ⚠️ التقاط صورة من الكاميرا مباشرة (للمنتجات)
+  async captureFromCamera() {
+    return new Promise(function (resolve) {
+      const html =
+        '<div style="text-align:center;">' +
+          '<video id="prodCameraPreview" autoplay playsinline muted style="width:100%;max-width:320px;border-radius:12px;border:2px solid var(--gold);"></video>' +
+          '<canvas id="prodCameraCanvas" style="display:none;"></canvas>' +
+          '<div style="margin-top:14px;display:flex;gap:8px;justify-content:center;">' +
+            '<button class="btn btn-primary" onclick="CameraHelper.takeProductSnapshot()">📸 التقاط</button>' +
+            '<button class="btn btn-warning" onclick="CameraHelper._resolve(null);Modal.close();">❌ إلغاء</button>' +
+          '</div>' +
+        '</div>';
+      Modal.open('📷 التقاط صورة المنتج', html, null, 'إلغاء', true);
+      CameraHelper._resolve = resolve;
+      setTimeout(async function () {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: 800 }, height: { ideal: 800 } }
+          });
+          const video = document.getElementById('prodCameraPreview');
+          if (video) {
+            video.srcObject = stream;
+            CameraHelper._stream = stream;
+          }
+        } catch (e) {
+          Toast.show('❌ فشل الوصول للكاميرا', 'error');
+          Modal.close();
+          resolve(null);
+        }
+      }, 300);
+    });
+  },
+
+  takeProductSnapshot() {
+    const video = document.getElementById('prodCameraPreview');
+    const canvas = document.getElementById('prodCameraCanvas');
+    if (!video || !canvas) return;
+    const maxW = 500;
+    let w = video.videoWidth, h = video.videoHeight;
+    if (w > h && w > maxW) { h = h * maxW / w; w = maxW; }
+    else if (h > maxW) { w = w * maxW / h; h = maxW; }
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    CameraHelper._cleanup();
+    Modal.close();
+    Utils.vibrate(80);
+    if (CameraHelper._resolve) CameraHelper._resolve(dataUrl);
+  },
+
   _cleanup() {
     if (CameraHelper._stream) {
       CameraHelper._stream.getTracks().forEach(function (t) { t.stop(); });
@@ -3353,126 +3463,130 @@ const Payroll = {
    ═══════════════════════════════════════════════════════════════════ */
 const Products = {
   render() {
-    const search = (document.getElementById('prodSearch') ? document.getElementById('prodSearch').value : '').trim();
-    let prods = (cache.products || []).filter(function (p) { return p.active !== false; });
-    if (search) prods = prods.filter(function (p) {
-      return (p.name || '').includes(search) || (p.barcode || '').includes(search) || (p.code || '').includes(search);
-    });
-    const addBtn = document.getElementById('prodAddBtn');
-    if (addBtn) addBtn.style.display = can('products_add') ? 'flex' : 'none';
-    if (prods.length === 0) {
-      document.getElementById('prodList').innerHTML = '<div class="empty"><div class="ico">📦</div>لا توجد منتجات</div>';
-      return;
-    }
-    let html = '';
-    for (const p of prods) {
-      const low = (Number(p.quantity) || 0) <= (Number(p.min_quantity) || 5);
-      const imgHtml = p.image
-        ? '<img src="' + p.image + '" style="width:60px;height:60px;border-radius:10px;border:2px solid #333;object-fit:cover;background:#0a0a0a;flex-shrink:0;">'
-        : '<div style="width:60px;height:60px;border-radius:10px;border:2px solid #333;background:linear-gradient(135deg,#1a1a1a,#0a0a0a);display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;">📦</div>';
-      html += '<div class="list-item">' +
-        '<div style="display:flex;gap:12px;align-items:center;flex:1;">' + imgHtml +
-          '<div class="info" style="margin-right:10px;">' +
-            '<h4>' + Utils.esc(p.name) + (p.code ? ' <small style="color:var(--orange-2);">(' + Utils.esc(p.code) + ')</small>' : '') + '</h4>' +
-            '<p>باركود: ' + Utils.esc(p.barcode || '-') + ' | ' + Utils.esc(p.unit || 'قطعة') + '</p>' +
-            '<p>شراء: ' + Utils.fmtMoney(p.cost_price) + ' | بيع: ' + Utils.fmtMoney(p.sale_price) + '</p>' +
-            '<p style="color:' + (low ? 'var(--red-2)' : 'var(--green-2)') + ';font-weight:600;">المخزون: ' + (p.quantity || 0) + '</p>' +
-          '</div>' +
+  const search = (document.getElementById('prodSearch') ? document.getElementById('prodSearch').value : '').trim();
+  let prods = (cache.products || []).filter(function (p) { return p.active !== false; });
+  if (search) prods = prods.filter(function (p) {
+    return (p.name || '').includes(search) || (p.barcode || '').includes(search) || (p.code || '').includes(search);
+  });
+  const addBtn = document.getElementById('prodAddBtn');
+  if (addBtn) addBtn.style.display = can('products_add') ? 'flex' : 'none';
+  if (prods.length === 0) {
+    document.getElementById('prodList').innerHTML = '<div class="empty"><div class="ico">📦</div>لا توجد منتجات</div>';
+    return;
+  }
+  let html = '';
+  for (const p of prods) {
+    const low = (Number(p.quantity) || 0) <= (Number(p.min_quantity) || 5);
+    const imgHtml = p.image
+      ? '<img src="' + p.image + '" style="width:70px;height:70px;border-radius:10px;border:2px solid #333;object-fit:cover;background:#0a0a0a;flex-shrink:0;">'
+      : '<div style="width:70px;height:70px;border-radius:10px;border:2px solid #333;background:linear-gradient(135deg,#1a1a1a,#0a0a0a);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;">📦</div>';
+    html += '<div class="list-item">' +
+      '<div style="display:flex;gap:12px;align-items:center;flex:1;">' + imgHtml +
+        '<div class="info" style="margin-right:10px;">' +
+          // ⚠️ الكود أساسي كبير
+          (p.code ? '<div style="font-size:18px;font-weight:800;color:var(--gold);letter-spacing:1px;font-family:Courier New,monospace;margin-bottom:2px;">' + Utils.esc(p.code) + '</div>' : '') +
+          // ⚠️ اسم المنتج
+          '<h4 style="font-size:14px;margin-bottom:4px;">' + Utils.esc(p.name) + '</h4>' +
+          // ⚠️ الباركود فرعي أصغر
+          (p.barcode ? '<p style="font-size:11px;color:var(--text-2);font-family:Courier New,monospace;">📊 ' + Utils.esc(p.barcode) + '</p>' : '') +
+          '<p style="font-size:11px;">شراء: ' + Utils.fmtMoney(p.cost_price) + ' | بيع: ' + Utils.fmtMoney(p.sale_price) + '</p>' +
+          '<p style="font-size:12px;color:' + (low ? 'var(--red-2)' : 'var(--green-2)') + ';font-weight:600;">المخزون: ' + (p.quantity || 0) + ' ' + Utils.esc(p.unit || 'قطعة') + '</p>' +
         '</div>' +
-        '<div class="actions">' +
-          (can('products_edit') ? '<button class="btn btn-primary btn-sm" onclick="Products.edit(\'' + p.id + '\')">✏️</button>' : '') +
-          (can('delete_anything') ? '<button class="btn btn-danger btn-sm" onclick="Products.remove(\'' + p.id + '\')">🗑️</button>' : '') +
-        '</div>' +
-      '</div>';
-    }
-    document.getElementById('prodList').innerHTML = html;
-  },
+      '</div>' +
+      '<div class="actions">' +
+        (can('products_edit') ? '<button class="btn btn-primary btn-sm" onclick="Products.edit(\'' + p.id + '\')">✏️</button>' : '') +
+        (can('delete_anything') ? '<button class="btn btn-danger btn-sm" onclick="Products.remove(\'' + p.id + '\')">🗑️</button>' : '') +
+      '</div>' +
+    '</div>';
+  }
+  document.getElementById('prodList').innerHTML = html;
+},
 
   search: Utils.debounce(function () { Products.render(); }, 250),
 
   async edit(id) {
-    if (id && !requirePermission('products_edit', 'تعديل')) return;
-    if (!id && !requirePermission('products_add', 'إضافة')) return;
-    let p = { name: '', barcode: '', code: '', unit: 'قطعة', cost_price: 0, sale_price: 0, quantity: 0, min_quantity: 5, image: '', origin: 'الصين' };
-    if (id) p = (cache.products || []).find(function (x) { return x.id === id; }) || p;
-    State.editingProductImage = p.image || null;
+  if (id && !requirePermission('products_edit', 'تعديل')) return;
+  if (!id && !requirePermission('products_add', 'إضافة')) return;
+  let p = { name: '', barcode: '', code: '', unit: 'قطعة', cost_price: 0, sale_price: 0, quantity: 0, min_quantity: 5, image: '', origin: 'الصين' };
+  if (id) p = (cache.products || []).find(function (x) { return x.id === id; }) || p;
+  State.editingProductImage = p.image || null;
 
-    // ⚠️ توليد الكود التلقائي للمنتج الجديد
-    let autoCode = p.code || '';
-    if (!id) {
-      autoCode = Products.generateAutoCode();
-    }
+  // ⚠️ توليد الكود التلقائي للمنتج الجديد
+  let autoCode = p.code || '';
+  if (!id) {
+    autoCode = Products.generateAutoCode();
+  }
 
-    const imgHtml = State.editingProductImage
-      ? '<img src="' + State.editingProductImage + '" id="prodImagePreview" style="width:100%;height:100%;object-fit:cover;">'
-      : '<span style="font-size:36px;color:#666;">📷</span>';
+  const imgHtml = State.editingProductImage
+    ? '<img src="' + State.editingProductImage + '" id="prodImagePreview" style="width:100%;height:100%;object-fit:cover;">'
+    : '<span style="font-size:36px;color:#666;">📷</span>';
 
-    const html =
-      '<div class="form-group"><label>صورة المنتج</label>' +
-        '<div style="width:120px;height:120px;border:2px dashed #444;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;margin:0 auto 10px;background:#0a0a0a;overflow:hidden;" onclick="Products.pickImage()">' + imgHtml + '</div>' +
-        '<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">' +
-          '<button type="button" class="btn btn-primary btn-sm" onclick="Products.pickFromCamera()">📷 كاميرا</button>' +
-          '<button type="button" class="btn btn-info btn-sm" onclick="Products.pickFromGallery()">🖼️ المعرض</button>' +
-          '<button type="button" class="btn btn-warning btn-sm" onclick="Products.pickFromFiles()">📁 من ملف</button>' +
-        '</div>' +
-        '<input type="file" id="prodImageInputCamera" accept="image/*" capture="environment" style="display:none;" onchange="Products.onImagePicked(event)">' +
-        '<input type="file" id="prodImageInputGallery" accept="image/*" style="display:none;" onchange="Products.onImagePicked(event)">' +
-        '<input type="file" id="prodImageInputFiles" accept="image/*" style="display:none;" onchange="Products.onImagePicked(event)">' +
+  const html =
+    '<div class="form-group"><label>صورة المنتج</label>' +
+      '<div style="width:120px;height:120px;border:2px dashed #444;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;margin:0 auto 10px;background:#0a0a0a;overflow:hidden;" onclick="Products.pickImage()">' + imgHtml + '</div>' +
+      '<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">' +
+        '<button type="button" class="btn btn-primary btn-sm" onclick="Products.pickFromCamera()">📷 كاميرا</button>' +
+        '<button type="button" class="btn btn-info btn-sm" onclick="Products.pickFromGallery()">🖼️ المعرض</button>' +
+        '<button type="button" class="btn btn-warning btn-sm" onclick="Products.pickFromFiles()">📁 من ملف</button>' +
       '</div>' +
-      '<div class="form-group"><label>اسم المنتج *</label><input id="p_name" value="' + Utils.esc(p.name || '') + '"></div>' +
-      '<div class="form-group"><label>الباركود</label>' +
-        '<div style="display:flex;gap:6px;">' +
-          '<input id="p_barcode" value="' + Utils.esc(p.barcode || '') + '" style="flex:1;">' +
-          '<button class="btn btn-info btn-sm" onclick="Scanner.open(\'field\')">📷</button>' +
-        '</div></div>' +
-      '<div class="form-group"><label>الكود ' + (!id ? '(تلقائي — يمكن التعديل)' : '') + '</label>' +
-        '<div style="display:flex;gap:6px;">' +
-          '<input id="p_code_auto" value="' + Utils.esc(autoCode) + '" readonly style="flex:1;background:#0a0a0a;color:var(--orange-2);font-weight:700;letter-spacing:1px;text-align:center;">' +
-          '<input id="p_code" placeholder="كود يدوي (اختياري)" style="flex:1;" value="' + (id ? Utils.esc(p.code || '') : '') + '">' +
-        '</div>' +
-        '<small style="color:#888;font-size:11px;">' +
-          (id ? 'الكود الحالي: ' + Utils.esc(p.code || '-') : 'سيتم استخدام الكود التلقائي لو الخانة اليدوية فاضية') +
-        '</small>' +
+      '<input type="file" id="prodImageInputCamera" accept="image/*" capture="environment" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" onchange="Products.onImagePicked(event)">' +
+      '<input type="file" id="prodImageInputGallery" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" onchange="Products.onImagePicked(event)">' +
+      '<input type="file" id="prodImageInputFiles" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" onchange="Products.onImagePicked(event)">' +
+    '</div>' +
+    '<div class="form-group"><label>اسم المنتج *</label><input id="p_name" value="' + Utils.esc(p.name || '') + '"></div>' +
+    '<div class="form-group"><label>الباركود</label>' +
+      '<div style="display:flex;gap:6px;">' +
+        '<input id="p_barcode" value="' + Utils.esc(p.barcode || '') + '" style="flex:1;">' +
+        '<button class="btn btn-info btn-sm" onclick="Scanner.open(\'field\')">📷</button>' +
+      '</div></div>' +
+    '<div class="form-group"><label>الكود ' + (!id ? '(تلقائي — يمكن التعديل)' : '') + '</label>' +
+      '<div style="display:flex;gap:6px;">' +
+        '<input id="p_code_auto" value="' + Utils.esc(autoCode) + '" readonly style="flex:1;background:#0a0a0a;color:var(--orange-2);font-weight:700;letter-spacing:1px;text-align:center;">' +
+        '<input id="p_code" placeholder="كود يدوي (اختياري)" style="flex:1;" value="' + (id ? Utils.esc(p.code || '') : '') + '">' +
       '</div>' +
-      '<div class="form-group"><label>الوحدة</label><input id="p_unit" value="' + Utils.esc(p.unit || 'قطعة') + '"></div>' +
-      '<div class="form-group"><label>المنشأ</label><input id="p_origin" value="' + Utils.esc(p.origin || 'الصين') + '"></div>' +
-      '<div class="form-group"><label>سعر الشراء</label><input id="p_cost" type="number" value="' + (p.cost_price || 0) + '"></div>' +
-      '<div class="form-group"><label>سعر البيع</label><input id="p_sale" type="number" value="' + (p.sale_price || 0) + '"></div>' +
-      '<div class="form-group"><label>الكمية</label><input id="p_qty" type="number" value="' + (p.quantity || 0) + '"></div>' +
-      '<div class="form-group"><label>الحد الأدنى</label><input id="p_min" type="number" value="' + (p.min_quantity || 5) + '"></div>';
+      '<small style="color:#888;font-size:11px;">' +
+        (id ? 'الكود الحالي: ' + Utils.esc(p.code || '-') : 'سيتم استخدام الكود التلقائي لو الخانة اليدوية فاضية') +
+      '</small>' +
+    '</div>' +
+    '<div class="form-group"><label>الوحدة</label><input id="p_unit" value="' + Utils.esc(p.unit || 'قطعة') + '"></div>' +
+    '<div class="form-group"><label>المنشأ</label><input id="p_origin" value="' + Utils.esc(p.origin || 'الصين') + '"></div>' +
+    '<div class="form-group"><label>سعر الشراء</label><input id="p_cost" type="number" value="' + (p.cost_price || 0) + '"></div>' +
+    '<div class="form-group"><label>سعر البيع</label><input id="p_sale" type="number" value="' + (p.sale_price || 0) + '"></div>' +
+    '<div class="form-group"><label>الكمية</label><input id="p_qty" type="number" value="' + (p.quantity || 0) + '"></div>' +
+    '<div class="form-group"><label>الحد الأدنى</label><input id="p_min" type="number" value="' + (p.min_quantity || 5) + '"></div>';
 
-    Modal.open(id ? '✏️ تعديل منتج' : '➕ إضافة منتج', html, async function () {
-      const name = document.getElementById('p_name').value.trim();
-      if (!name) return Toast.show('اسم المنتج مطلوب', 'error');
+  Modal.open(id ? '✏️ تعديل منتج' : '➕ إضافة منتج', html, async function () {
+    const name = document.getElementById('p_name').value.trim();
+    if (!name) return Toast.show('اسم المنتج مطلوب', 'error');
 
-      // ⚠️ تحديد الكود: يدوي أو تلقائي
-      const manualCode = document.getElementById('p_code').value.trim();
-      const autoCodeVal = document.getElementById('p_code_auto').value.trim();
-      const finalCode = manualCode || autoCodeVal;
+    // ⚠️ تحديد الكود: يدوي أو تلقائي
+    const manualCode = document.getElementById('p_code').value.trim();
+    const autoCodeVal = document.getElementById('p_code_auto').value.trim();
+    const finalCode = manualCode || autoCodeVal;
 
-      const newId = id || Utils.genId('PRD');
-      const data = {
-        id: newId,
-        name: name,
-        barcode: document.getElementById('p_barcode').value,
-        code: finalCode,
-        unit: document.getElementById('p_unit').value,
-        origin: document.getElementById('p_origin').value,
-        cost_price: parseFloat(document.getElementById('p_cost').value) || 0,
-        sale_price: parseFloat(document.getElementById('p_sale').value) || 0,
-        quantity: parseInt(document.getElementById('p_qty').value) || 0,
-        min_quantity: parseInt(document.getElementById('p_min').value) || 5,
-        image: State.editingProductImage || '',
-        active: true,
-        created_at: p.created_at || Utils.nowISO()
-      };
-      await Sync.save('products', newId, data);
-      State.editingProductImage = null;
-      Modal.close();
-      Toast.show('تم الحفظ — كود: ' + finalCode);
-    });
-  },
-
+    const newId = id || Utils.genId('PRD');
+    const data = {
+      id: newId,
+      name: name,
+      barcode: document.getElementById('p_barcode').value,
+      code: finalCode,
+      unit: document.getElementById('p_unit').value,
+      origin: document.getElementById('p_origin').value,
+      cost_price: parseFloat(document.getElementById('p_cost').value) || 0,
+      sale_price: parseFloat(document.getElementById('p_sale').value) || 0,
+      quantity: parseInt(document.getElementById('p_qty').value) || 0,
+      min_quantity: parseInt(document.getElementById('p_min').value) || 5,
+      image: State.editingProductImage || '',
+      active: true,
+      created_at: p.created_at || Utils.nowISO()
+    };
+    await Sync.save('products', newId, data);
+    State.editingProductImage = null;
+    Modal.close();
+    Toast.show('تم الحفظ — كود: ' + finalCode);
+  });
+},
+  
   // ⚠️ توليد الكود التلقائي المتسلسل
   generateAutoCode() {
     const products = cache.products || [];
@@ -3487,57 +3601,86 @@ const Products = {
     return 'PRD' + String(nextNum).padStart(3, '0');
   },
 
-  // ⚠️ اختيار الصورة من الكاميرا
-  pickFromCamera() {
+  // ⚠️ الكاميرا — نستخدم Camera API مباشر
+async pickFromCamera() {
+  try {
+    // الطريقة 1: getUserMedia (الأحدث والأضمن في WebView)
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      const photo = await CameraHelper.captureFromCamera();
+      if (photo) {
+        State.editingProductImage = photo;
+        const preview = document.getElementById('prodImagePreview');
+        if (preview) {
+          preview.src = photo;
+        } else {
+          const container = document.querySelector('div[onclick="Products.pickImage()"]');
+          if (container) {
+            container.innerHTML = '<img src="' + photo + '" id="prodImagePreview" style="width:100%;height:100%;object-fit:cover;">';
+          }
+        }
+        Toast.show('✅ تم التقاط الصورة');
+      }
+      return;
+    }
+    // الطريقة 2: input type=file مع capture
     const inp = document.getElementById('prodImageInputCamera');
     if (inp) inp.click();
-  },
+  } catch (e) {
+    Toast.show('❌ فشل الكاميرا: ' + e.message, 'error');
+  }
+},
 
-  // ⚠️ اختيار الصورة من المعرض
-  pickFromGallery() {
-    const inp = document.getElementById('prodImageInputGallery');
-    if (inp) inp.click();
-  },
+// ⚠️ المعرض — نستخدم input عادي
+pickFromGallery() {
+  const inp = document.getElementById('prodImageInputGallery');
+  if (inp) inp.click();
+},
 
-  // ⚠️ اختيار الصورة من الملفات
-  pickFromFiles() {
-    const inp = document.getElementById('prodImageInputFiles');
-    if (inp) inp.click();
-  },
-
+// ⚠️ من ملف — نستخدم input منفصل
+pickFromFiles() {
+  const inp = document.getElementById('prodImageInputFiles');
+  if (inp) inp.click();
+},
   // ⚠️ دالة عامة للاختيار (توافق مع الكود القديم)
   pickImage() {
     Products.pickFromGallery();
   },
 
   onImagePicked(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    if (file.size > 700000) return Toast.show('الصورة كبيرة (الحد 700KB)', 'error');
-    const reader = new FileReader();
-    reader.onload = function (e) {
-      const img = new Image();
-      img.onload = function () {
-        const canvas = document.createElement('canvas');
-        const maxSize = 400;
-        let w = img.width, h = img.height;
-        if (w > h && w > maxSize) { h = h * maxSize / w; w = maxSize; }
-        else if (h > maxSize) { w = w * maxSize / h; h = maxSize; }
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        State.editingProductImage = canvas.toDataURL('image/jpeg', 0.7);
-        const preview = document.getElementById('prodImagePreview');
-        if (preview) preview.src = State.editingProductImage;
-        else {
-          const wrapper = event.target.parentElement.querySelector('div[onclick]');
-          if (wrapper) wrapper.innerHTML = '<img src="' + State.editingProductImage + '" id="prodImagePreview" style="width:100%;height:100%;object-fit:cover;">';
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.size > 700000) return Toast.show('الصورة كبيرة (الحد 700KB)', 'error');
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const img = new Image();
+    img.onload = function () {
+      const canvas = document.createElement('canvas');
+      const maxSize = 500;
+      let w = img.width, h = img.height;
+      if (w > h && w > maxSize) { h = h * maxSize / w; w = maxSize; }
+      else if (h > maxSize) { w = w * maxSize / h; h = maxSize; }
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      State.editingProductImage = canvas.toDataURL('image/jpeg', 0.7);
+      // ⚠️ نحدّث الـ preview
+      const preview = document.getElementById('prodImagePreview');
+      if (preview) {
+        preview.src = State.editingProductImage;
+      } else {
+        const container = document.querySelector('div[onclick="Products.pickImage()"]');
+        if (container) {
+          container.innerHTML = '<img src="' + State.editingProductImage + '" id="prodImagePreview" style="width:100%;height:100%;object-fit:cover;">';
         }
-      };
-      img.src = e.target.result;
+      }
+      Toast.show('✅ تم اختيار الصورة');
     };
-    reader.readAsDataURL(file);
-  },
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  // ⚠️ ننضّف الحقل عشان لو نفس الصورة اتاختارت تاني تشتغل
+  event.target.value = '';
+},
 
   async remove(id) {
     if (!requirePermission('delete_anything', 'حذف')) return;
