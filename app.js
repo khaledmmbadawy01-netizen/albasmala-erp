@@ -1105,52 +1105,65 @@ const Scanner = {
     }
   },
   onResult(code) {
-    const target = State.barcodeTarget;
-    Scanner.stop().then(function () {
-      Scanner.handleBarcode(code, target);
-    });
-  },
+  const target = State.barcodeTarget;
+  const el = document.activeElement;
+  Scanner.stop().then(function () {
+    Scanner.handleBarcode(code, target);
+  });
+},
   handleBarcode(code, target) {
-    const products = cache.products || [];
-    const p = products.find(function (x) {
-      return x.barcode === code || x.code === code;
-    });
-    if (target === 'search') {
-      Modal.close();
+  const products = cache.products || [];
+  const p = products.find(function (x) {
+    return x.barcode === code || x.code === code;
+  });
+  
+  if (target === 'field') {
+    // أولاً: حط الكود في الحقل
+    const el = document.getElementById('p_barcode');
+    if (el) {
+      el.value = code;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      Toast.show('✅ تم المسح: ' + code);
+    }
+    // ثانياً: اقفل المودال بعد 600ms (وقت كافي لتحديث الحقل)
+    setTimeout(function () { 
+      const m = document.querySelector('.modal-overlay');
+      if (m) m.remove();
+      State._modalCallback = null;
+    }, 600);
+    return;
+  }
+  
+  if (target === 'search') {
+    const m = document.querySelector('.modal-overlay');
+    if (m) m.remove();
+    setTimeout(function () {
       const el = document.getElementById('prodSearch');
       if (el) { el.value = code; Products.search(code); }
-    } else if (target === 'field') {
-      Modal.close();
-      setTimeout(function () {
-        const el = document.getElementById('p_barcode');
-        if (el) {
-          el.value = code;
-          Toast.show('✅ تم المسح: ' + code);
-        }
-      }, 200);
-    } else if (target === 'sale') {
-      Modal.close();
-      if (!p) {
-        Scanner.quickAddProduct(code, 'sale');
-        return;
-      }
+    }, 300);
+    return;
+  }
+  
+  // الباقي (sale, purchase, return)
+  const m = document.querySelector('.modal-overlay');
+  if (m) m.remove();
+  setTimeout(function () {
+    if (target === 'sale') {
+      if (!p) { Scanner.quickAddProduct(code, 'sale'); return; }
       Sales.addItemById(p.id);
       Toast.show('✅ ' + p.name);
     } else if (target === 'purchase') {
-      Modal.close();
-      if (!p) {
-        Scanner.quickAddProduct(code, 'purchase');
-        return;
-      }
+      if (!p) { Scanner.quickAddProduct(code, 'purchase'); return; }
       Purchases.addItemById(p.id);
       Toast.show('✅ ' + p.name);
     } else if (target === 'return') {
-      Modal.close();
-      if (!p) return Toast.show('منتج غير موجود: ' + code, 'error');
+      if (!p) { Toast.show('منتج غير موجود: ' + code, 'error'); return; }
       Returns.addItemById(p.id);
       Toast.show('✅ ' + p.name);
     }
-  },
+  }, 300);
+},
   quickAddProduct(barcode, context) {
     const html =
       '<div class="warning-box">⚠️ المنتج غير موجود. هل تريد إضافته الآن؟</div>' +
