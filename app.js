@@ -3389,7 +3389,6 @@ const Products = {
   },
   search: Utils.debounce(function () { Products.render(); }, 250),
   async edit(id) {
-  async edit(id) {
   if (id && !requirePermission('products_edit', 'تعديل')) return;
   if (!id && !requirePermission('products_add', 'إضافة')) return;
   let p = { name: '', barcode: '', code: '', unit: 'قطعة', cost_price: 0, sale_price: 0, quantity: 0, min_quantity: 5, image: '', origin: 'الصين' };
