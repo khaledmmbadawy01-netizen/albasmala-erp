@@ -403,39 +403,41 @@ const Toast = {
    ═══════════════════════════════════════════════════════════════════ */
 const Modal = {
   open(title, bodyHtml, onSave, cancelText, allowStack) {
-  cancelText = cancelText || 'إغلاق';
-  State._modalCallback = onSave;
-  // ⚠️ لو allowStack مش مفعّل، نشيل أي مودال موجود
-  if (!allowStack) {
-    const existing = document.querySelector('.modal-overlay');
-    if (existing) existing.remove();
-  }
-  const html =
-    '<div class="modal-overlay" onclick="if(event.target===this && !' + (allowStack ? 'true' : 'false') + ')Modal.close()">' +
-      '<div class="modal">' +
-        '<h3>' + title + '</h3>' +
-        '<div id="modalBody">' + bodyHtml + '</div>' +
-        (onSave
-          ? '<div style="display:flex;gap:8px;margin-top:16px;">' +
-              '<button class="btn btn-primary btn-full" onclick="Modal.confirm()">✓ حفظ</button>' +
-              '<button class="btn btn-danger btn-full" onclick="Modal.close()">✕ ' + cancelText + '</button>' +
-            '</div>'
-          : '<div style="margin-top:16px;">' +
-              '<button class="btn btn-outline btn-full" onclick="Modal.close()">✓ ' + cancelText + '</button>' +
-            '</div>') +
-      '</div>' +
-    '</div>';
-  document.body.insertAdjacentHTML('beforeend', html);
-},
+    cancelText = cancelText || 'إغلاق';
+    State._modalCallback = onSave;
+    if (!allowStack) {
+      const existing = document.querySelector('.modal-overlay');
+      if (existing) existing.remove();
+    }
+    const html =
+      '<div class="modal-overlay"' + (allowStack ? '' : ' onclick="if(event.target===this)Modal.close()"') + '>' +
+        '<div class="modal">' +
+          '<h3>' + title + '</h3>' +
+          '<div id="modalBody">' + bodyHtml + '</div>' +
+          (onSave
+            ? '<div style="display:flex;gap:8px;margin-top:16px;">' +
+                '<button class="btn btn-primary btn-full" onclick="Modal.confirm()">✓ حفظ</button>' +
+                '<button class="btn btn-danger btn-full" onclick="Modal.close()">✕ ' + cancelText + '</button>' +
+              '</div>'
+            : '<div style="margin-top:16px;">' +
+                '<button class="btn btn-outline btn-full" onclick="Modal.close()">✓ ' + cancelText + '</button>' +
+              '</div>') +
+        '</div>' +
+      '</div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+  },
   close() {
-  // ⚠️ نشيل آخر مودال بس (الأحدث)
-  const modals = document.querySelectorAll('.modal-overlay');
-  if (modals.length > 0) {
-    modals[modals.length - 1].remove();
-  }
-  State._modalCallback = null;
-  Scanner.stop();
-},
+    const modals = document.querySelectorAll('.modal-overlay');
+    if (modals.length > 0) {
+      modals[modals.length - 1].remove();
+    }
+    State._modalCallback = null;
+    try {
+      if (typeof Scanner !== 'undefined' && Scanner.stop) {
+        Scanner.stop();
+      }
+    } catch (e) { }
+  },
   confirm() {
     if (State._modalCallback) State._modalCallback();
   }
