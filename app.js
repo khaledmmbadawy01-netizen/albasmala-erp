@@ -1121,7 +1121,6 @@ const Scanner = {
   });
 },
   handleBarcode(code, target) {
-  handleBarcode(code, target) {
   const products = cache.products || [];
   const p = products.find(function (x) {
     return x.barcode === code || x.code === code;
