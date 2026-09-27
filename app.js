@@ -1120,19 +1120,15 @@ const Scanner = {
     Scanner.handleBarcode(code, target);
   });
 },
-  handleBarcode(code, target) {
+handleBarcode(code, target) {
   const products = cache.products || [];
   const p = products.find(function (x) {
     return x.barcode === code || x.code === code;
   });
 
-  // ⚠️ حالة 'field': نحفظ الباركود ونقفل مودال الكاميرا
+  // ⚠️ حالة 'field': نحط الكود في الحقل ونقفل مودال الكاميرا فقط
   if (target === 'field') {
-    // نحفظ الباركود في State
-    State.pendingBarcode = code;
-    Toast.show('✅ تم المسح: ' + code);
-
-    // نقفل مودال الكاميرا فقط
+    // 1. نوقف الكاميرا أولاً
     try {
       if (State.scanner) {
         State.scanner.stop().catch(function(){});
@@ -1140,31 +1136,34 @@ const Scanner = {
       }
     } catch (e) { }
 
-    // نقفل المودال (مودال الكاميرا)
+    // 2. نقفل مودال الكاميرا فقط (آخر مودال)
     try {
-      const m = document.querySelector('.modal-overlay');
-      if (m) m.remove();
-      State._modalCallback = null;
+      const modals = document.querySelectorAll('.modal-overlay');
+      if (modals.length > 0) {
+        modals[modals.length - 1].remove();
+      }
     } catch (e) { }
 
-    // بعد الإغلاق، نتحقق لو فيه مودال إضافة منتج مفتوح
-    // ونحط الباركود فيه
+    // 3. نحط الكود في الحقل (بعد ما مودال الكاميرا اتقفل)
     setTimeout(function () {
       const el = document.getElementById('p_barcode');
       if (el) {
         el.value = code;
-        State.pendingBarcode = null;
-        Toast.show('✅ تم إدخال الباركود');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        Toast.show('✅ تم إدخال الباركود: ' + code);
+      } else {
+        Toast.show('✅ تم المسح: ' + code, 'info');
       }
     }, 400);
     return;
   }
 
-  // باقي الحالات
+  // باقي الحالات: sale, purchase, return, search
   try {
-    const m = document.querySelector('.modal-overlay');
-    if (m) m.remove();
-    State._modalCallback = null;
+    const modals = document.querySelectorAll('.modal-overlay');
+    if (modals.length > 0) {
+      modals[modals.length - 1].remove();
+    }
   } catch (e) { }
 
   if (target === 'search') {
