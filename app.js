@@ -3373,7 +3373,7 @@ const Products = {
       html += '<div class="list-item">' +
         '<div style="display:flex;gap:12px;align-items:center;flex:1;">' + imgHtml +
           '<div class="info" style="margin-right:10px;">' +
-            '<h4>' + Utils.esc(p.name) + '</h4>' +
+            '<h4>' + Utils.esc(p.name) + (p.code ? ' <small style="color:var(--orange-2);">(' + Utils.esc(p.code) + ')</small>' : '') + '</h4>' +
             '<p>باركود: ' + Utils.esc(p.barcode || '-') + ' | ' + Utils.esc(p.unit || 'قطعة') + '</p>' +
             '<p>شراء: ' + Utils.fmtMoney(p.cost_price) + ' | بيع: ' + Utils.fmtMoney(p.sale_price) + '</p>' +
             '<p style="color:' + (low ? 'var(--red-2)' : 'var(--green-2)') + ';font-weight:600;">المخزون: ' + (p.quantity || 0) + '</p>' +
@@ -3387,20 +3387,37 @@ const Products = {
     }
     document.getElementById('prodList').innerHTML = html;
   },
+
   search: Utils.debounce(function () { Products.render(); }, 250),
+
   async edit(id) {
     if (id && !requirePermission('products_edit', 'تعديل')) return;
     if (!id && !requirePermission('products_add', 'إضافة')) return;
     let p = { name: '', barcode: '', code: '', unit: 'قطعة', cost_price: 0, sale_price: 0, quantity: 0, min_quantity: 5, image: '', origin: 'الصين' };
     if (id) p = (cache.products || []).find(function (x) { return x.id === id; }) || p;
     State.editingProductImage = p.image || null;
+
+    // ⚠️ توليد الكود التلقائي للمنتج الجديد
+    let autoCode = p.code || '';
+    if (!id) {
+      autoCode = Products.generateAutoCode();
+    }
+
     const imgHtml = State.editingProductImage
       ? '<img src="' + State.editingProductImage + '" id="prodImagePreview" style="width:100%;height:100%;object-fit:cover;">'
       : '<span style="font-size:36px;color:#666;">📷</span>';
+
     const html =
       '<div class="form-group"><label>صورة المنتج</label>' +
-        '<div style="width:120px;height:120px;border:2px dashed #444;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;margin:0 auto;background:#0a0a0a;overflow:hidden;" onclick="Products.pickImage()">' + imgHtml + '</div>' +
-        '<input type="file" id="prodImageInput" accept="image/*" style="display:none;" onchange="Products.onImagePicked(event)">' +
+        '<div style="width:120px;height:120px;border:2px dashed #444;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;margin:0 auto 10px;background:#0a0a0a;overflow:hidden;" onclick="Products.pickImage()">' + imgHtml + '</div>' +
+        '<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">' +
+          '<button type="button" class="btn btn-primary btn-sm" onclick="Products.pickFromCamera()">📷 كاميرا</button>' +
+          '<button type="button" class="btn btn-info btn-sm" onclick="Products.pickFromGallery()">🖼️ المعرض</button>' +
+          '<button type="button" class="btn btn-warning btn-sm" onclick="Products.pickFromFiles()">📁 من ملف</button>' +
+        '</div>' +
+        '<input type="file" id="prodImageInputCamera" accept="image/*" capture="environment" style="display:none;" onchange="Products.onImagePicked(event)">' +
+        '<input type="file" id="prodImageInputGallery" accept="image/*" style="display:none;" onchange="Products.onImagePicked(event)">' +
+        '<input type="file" id="prodImageInputFiles" accept="image/*" style="display:none;" onchange="Products.onImagePicked(event)">' +
       '</div>' +
       '<div class="form-group"><label>اسم المنتج *</label><input id="p_name" value="' + Utils.esc(p.name || '') + '"></div>' +
       '<div class="form-group"><label>الباركود</label>' +
@@ -3408,22 +3425,37 @@ const Products = {
           '<input id="p_barcode" value="' + Utils.esc(p.barcode || '') + '" style="flex:1;">' +
           '<button class="btn btn-info btn-sm" onclick="Scanner.open(\'field\')">📷</button>' +
         '</div></div>' +
-      '<div class="form-group"><label>الكود</label><input id="p_code" value="' + Utils.esc(p.code || '') + '"></div>' +
+      '<div class="form-group"><label>الكود ' + (!id ? '(تلقائي — يمكن التعديل)' : '') + '</label>' +
+        '<div style="display:flex;gap:6px;">' +
+          '<input id="p_code_auto" value="' + Utils.esc(autoCode) + '" readonly style="flex:1;background:#0a0a0a;color:var(--orange-2);font-weight:700;letter-spacing:1px;text-align:center;">' +
+          '<input id="p_code" placeholder="كود يدوي (اختياري)" style="flex:1;" value="' + (id ? Utils.esc(p.code || '') : '') + '">' +
+        '</div>' +
+        '<small style="color:#888;font-size:11px;">' +
+          (id ? 'الكود الحالي: ' + Utils.esc(p.code || '-') : 'سيتم استخدام الكود التلقائي لو الخانة اليدوية فاضية') +
+        '</small>' +
+      '</div>' +
       '<div class="form-group"><label>الوحدة</label><input id="p_unit" value="' + Utils.esc(p.unit || 'قطعة') + '"></div>' +
       '<div class="form-group"><label>المنشأ</label><input id="p_origin" value="' + Utils.esc(p.origin || 'الصين') + '"></div>' +
       '<div class="form-group"><label>سعر الشراء</label><input id="p_cost" type="number" value="' + (p.cost_price || 0) + '"></div>' +
       '<div class="form-group"><label>سعر البيع</label><input id="p_sale" type="number" value="' + (p.sale_price || 0) + '"></div>' +
       '<div class="form-group"><label>الكمية</label><input id="p_qty" type="number" value="' + (p.quantity || 0) + '"></div>' +
       '<div class="form-group"><label>الحد الأدنى</label><input id="p_min" type="number" value="' + (p.min_quantity || 5) + '"></div>';
+
     Modal.open(id ? '✏️ تعديل منتج' : '➕ إضافة منتج', html, async function () {
       const name = document.getElementById('p_name').value.trim();
       if (!name) return Toast.show('اسم المنتج مطلوب', 'error');
+
+      // ⚠️ تحديد الكود: يدوي أو تلقائي
+      const manualCode = document.getElementById('p_code').value.trim();
+      const autoCodeVal = document.getElementById('p_code_auto').value.trim();
+      const finalCode = manualCode || autoCodeVal;
+
       const newId = id || Utils.genId('PRD');
       const data = {
         id: newId,
         name: name,
         barcode: document.getElementById('p_barcode').value,
-        code: document.getElementById('p_code').value,
+        code: finalCode,
         unit: document.getElementById('p_unit').value,
         origin: document.getElementById('p_origin').value,
         cost_price: parseFloat(document.getElementById('p_cost').value) || 0,
@@ -3437,12 +3469,47 @@ const Products = {
       await Sync.save('products', newId, data);
       State.editingProductImage = null;
       Modal.close();
-      Toast.show('تم الحفظ');
+      Toast.show('تم الحفظ — كود: ' + finalCode);
     });
   },
-  pickImage() {
-    document.getElementById('prodImageInput').click();
+
+  // ⚠️ توليد الكود التلقائي المتسلسل
+  generateAutoCode() {
+    const products = cache.products || [];
+    let maxNum = 0;
+    for (const p of products) {
+      if (p.code && /^PRD\d+$/i.test(p.code)) {
+        const num = parseInt(p.code.replace(/[^\d]/g, ''), 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
+    }
+    const nextNum = maxNum + 1;
+    return 'PRD' + String(nextNum).padStart(3, '0');
   },
+
+  // ⚠️ اختيار الصورة من الكاميرا
+  pickFromCamera() {
+    const inp = document.getElementById('prodImageInputCamera');
+    if (inp) inp.click();
+  },
+
+  // ⚠️ اختيار الصورة من المعرض
+  pickFromGallery() {
+    const inp = document.getElementById('prodImageInputGallery');
+    if (inp) inp.click();
+  },
+
+  // ⚠️ اختيار الصورة من الملفات
+  pickFromFiles() {
+    const inp = document.getElementById('prodImageInputFiles');
+    if (inp) inp.click();
+  },
+
+  // ⚠️ دالة عامة للاختيار (توافق مع الكود القديم)
+  pickImage() {
+    Products.pickFromGallery();
+  },
+
   onImagePicked(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -3456,7 +3523,8 @@ const Products = {
         let w = img.width, h = img.height;
         if (w > h && w > maxSize) { h = h * maxSize / w; w = maxSize; }
         else if (h > maxSize) { w = w * maxSize / h; h = maxSize; }
-        canvas.width = w; canvas.height = h;
+        canvas.width = w;
+        canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         State.editingProductImage = canvas.toDataURL('image/jpeg', 0.7);
         const preview = document.getElementById('prodImagePreview');
@@ -3470,6 +3538,7 @@ const Products = {
     };
     reader.readAsDataURL(file);
   },
+
   async remove(id) {
     if (!requirePermission('delete_anything', 'حذف')) return;
     if (!confirm('حذف المنتج؟')) return;
