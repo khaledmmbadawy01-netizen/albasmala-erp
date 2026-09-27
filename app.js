@@ -3481,32 +3481,165 @@ generateAutoCode() {
       if (!isNaN(num) && num > maxNum) maxNum = num;
     }
   }
-  const nextNum = maxNum + 1;
-  return 'PRD' + String(nextNum).padStart(3, '0');
-},
+const Products = {
+  render() {
+    const search = (document.getElementById('prodSearch') ? document.getElementById('prodSearch').value : '').trim();
+    let prods = (cache.products || []).filter(function (p) { return p.active !== false; });
+    if (search) prods = prods.filter(function (p) {
+      return (p.name || '').includes(search) || (p.barcode || '').includes(search) || (p.code || '').includes(search);
+    });
+    const addBtn = document.getElementById('prodAddBtn');
+    if (addBtn) addBtn.style.display = can('products_add') ? 'flex' : 'none';
+    if (prods.length === 0) {
+      document.getElementById('prodList').innerHTML = '<div class="empty"><div class="ico">📦</div>لا توجد منتجات</div>';
+      return;
+    }
+    let html = '';
+    for (const p of prods) {
+      const low = (Number(p.quantity) || 0) <= (Number(p.min_quantity) || 5);
+      const imgHtml = p.image
+        ? '<img src="' + p.image + '" style="width:60px;height:60px;border-radius:10px;border:2px solid #333;object-fit:cover;background:#0a0a0a;flex-shrink:0;">'
+        : '<div style="width:60px;height:60px;border-radius:10px;border:2px solid #333;background:linear-gradient(135deg,#1a1a1a,#0a0a0a);display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;">📦</div>';
+      html += '<div class="list-item">' +
+        '<div style="display:flex;gap:12px;align-items:center;flex:1;">' + imgHtml +
+          '<div class="info" style="margin-right:10px;">' +
+            '<h4>' + Utils.esc(p.name) + (p.code ? ' <small style="color:var(--orange-2);">(' + Utils.esc(p.code) + ')</small>' : '') + '</h4>' +
+            '<p>باركود: ' + Utils.esc(p.barcode || '-') + ' | ' + Utils.esc(p.unit || 'قطعة') + '</p>' +
+            '<p>شراء: ' + Utils.fmtMoney(p.cost_price) + ' | بيع: ' + Utils.fmtMoney(p.sale_price) + '</p>' +
+            '<p style="color:' + (low ? 'var(--red-2)' : 'var(--green-2)') + ';font-weight:600;">المخزون: ' + (p.quantity || 0) + '</p>' +
+          '</div>' +
+        '</div>' +
+        '<div class="actions">' +
+          (can('products_edit') ? '<button class="btn btn-primary btn-sm" onclick="Products.edit(\'' + p.id + '\')">✏️</button>' : '') +
+          (can('delete_anything') ? '<button class="btn btn-danger btn-sm" onclick="Products.remove(\'' + p.id + '\')">🗑️</button>' : '') +
+        '</div>' +
+      '</div>';
+    }
+    document.getElementById('prodList').innerHTML = html;
+  },
 
-// ⚠️ اختيار الصورة من الكاميرا
-pickFromCamera() {
-  const inp = document.getElementById('prodImageInputCamera');
-  if (inp) inp.click();
-},
+  search: Utils.debounce(function () { Products.render(); }, 250),
 
-// ⚠️ اختيار الصورة من المعرض
-pickFromGallery() {
-  const inp = document.getElementById('prodImageInputGallery');
-  if (inp) inp.click();
-},
+  async edit(id) {
+    if (id && !requirePermission('products_edit', 'تعديل')) return;
+    if (!id && !requirePermission('products_add', 'إضافة')) return;
+    let p = { name: '', barcode: '', code: '', unit: 'قطعة', cost_price: 0, sale_price: 0, quantity: 0, min_quantity: 5, image: '', origin: 'الصين' };
+    if (id) p = (cache.products || []).find(function (x) { return x.id === id; }) || p;
+    State.editingProductImage = p.image || null;
 
-// ⚠️ اختيار الصورة من الملفات
-pickFromFiles() {
-  const inp = document.getElementById('prodImageInputFiles');
-  if (inp) inp.click();
-},
+    // ⚠️ توليد الكود التلقائي للمنتج الجديد
+    let autoCode = p.code || '';
+    if (!id) {
+      autoCode = Products.generateAutoCode();
+    }
 
-// ⚠️ دالة عامة للاختيار (توافق مع الكود القديم)
-pickImage() {
-  Products.pickFromGallery();
-},
+    const imgHtml = State.editingProductImage
+      ? '<img src="' + State.editingProductImage + '" id="prodImagePreview" style="width:100%;height:100%;object-fit:cover;">'
+      : '<span style="font-size:36px;color:#666;">📷</span>';
+
+    const html =
+      '<div class="form-group"><label>صورة المنتج</label>' +
+        '<div style="width:120px;height:120px;border:2px dashed #444;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;margin:0 auto 10px;background:#0a0a0a;overflow:hidden;" onclick="Products.pickImage()">' + imgHtml + '</div>' +
+        '<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">' +
+          '<button type="button" class="btn btn-primary btn-sm" onclick="Products.pickFromCamera()">📷 كاميرا</button>' +
+          '<button type="button" class="btn btn-info btn-sm" onclick="Products.pickFromGallery()">🖼️ المعرض</button>' +
+          '<button type="button" class="btn btn-warning btn-sm" onclick="Products.pickFromFiles()">📁 من ملف</button>' +
+        '</div>' +
+        '<input type="file" id="prodImageInputCamera" accept="image/*" capture="environment" style="display:none;" onchange="Products.onImagePicked(event)">' +
+        '<input type="file" id="prodImageInputGallery" accept="image/*" style="display:none;" onchange="Products.onImagePicked(event)">' +
+        '<input type="file" id="prodImageInputFiles" accept="image/*" style="display:none;" onchange="Products.onImagePicked(event)">' +
+      '</div>' +
+      '<div class="form-group"><label>اسم المنتج *</label><input id="p_name" value="' + Utils.esc(p.name || '') + '"></div>' +
+      '<div class="form-group"><label>الباركود</label>' +
+        '<div style="display:flex;gap:6px;">' +
+          '<input id="p_barcode" value="' + Utils.esc(p.barcode || '') + '" style="flex:1;">' +
+          '<button class="btn btn-info btn-sm" onclick="Scanner.open(\'field\')">📷</button>' +
+        '</div></div>' +
+      '<div class="form-group"><label>الكود ' + (!id ? '(تلقائي — يمكن التعديل)' : '') + '</label>' +
+        '<div style="display:flex;gap:6px;">' +
+          '<input id="p_code_auto" value="' + Utils.esc(autoCode) + '" readonly style="flex:1;background:#0a0a0a;color:var(--orange-2);font-weight:700;letter-spacing:1px;text-align:center;">' +
+          '<input id="p_code" placeholder="كود يدوي (اختياري)" style="flex:1;" value="' + (id ? Utils.esc(p.code || '') : '') + '">' +
+        '</div>' +
+        '<small style="color:#888;font-size:11px;">' +
+          (id ? 'الكود الحالي: ' + Utils.esc(p.code || '-') : 'سيتم استخدام الكود التلقائي لو الخانة اليدوية فاضية') +
+        '</small>' +
+      '</div>' +
+      '<div class="form-group"><label>الوحدة</label><input id="p_unit" value="' + Utils.esc(p.unit || 'قطعة') + '"></div>' +
+      '<div class="form-group"><label>المنشأ</label><input id="p_origin" value="' + Utils.esc(p.origin || 'الصين') + '"></div>' +
+      '<div class="form-group"><label>سعر الشراء</label><input id="p_cost" type="number" value="' + (p.cost_price || 0) + '"></div>' +
+      '<div class="form-group"><label>سعر البيع</label><input id="p_sale" type="number" value="' + (p.sale_price || 0) + '"></div>' +
+      '<div class="form-group"><label>الكمية</label><input id="p_qty" type="number" value="' + (p.quantity || 0) + '"></div>' +
+      '<div class="form-group"><label>الحد الأدنى</label><input id="p_min" type="number" value="' + (p.min_quantity || 5) + '"></div>';
+
+    Modal.open(id ? '✏️ تعديل منتج' : '➕ إضافة منتج', html, async function () {
+      const name = document.getElementById('p_name').value.trim();
+      if (!name) return Toast.show('اسم المنتج مطلوب', 'error');
+
+      // ⚠️ تحديد الكود: يدوي أو تلقائي
+      const manualCode = document.getElementById('p_code').value.trim();
+      const autoCodeVal = document.getElementById('p_code_auto').value.trim();
+      const finalCode = manualCode || autoCodeVal;
+
+      const newId = id || Utils.genId('PRD');
+      const data = {
+        id: newId,
+        name: name,
+        barcode: document.getElementById('p_barcode').value,
+        code: finalCode,
+        unit: document.getElementById('p_unit').value,
+        origin: document.getElementById('p_origin').value,
+        cost_price: parseFloat(document.getElementById('p_cost').value) || 0,
+        sale_price: parseFloat(document.getElementById('p_sale').value) || 0,
+        quantity: parseInt(document.getElementById('p_qty').value) || 0,
+        min_quantity: parseInt(document.getElementById('p_min').value) || 5,
+        image: State.editingProductImage || '',
+        active: true,
+        created_at: p.created_at || Utils.nowISO()
+      };
+      await Sync.save('products', newId, data);
+      State.editingProductImage = null;
+      Modal.close();
+      Toast.show('تم الحفظ — كود: ' + finalCode);
+    });
+  },
+
+  // ⚠️ توليد الكود التلقائي المتسلسل
+  generateAutoCode() {
+    const products = cache.products || [];
+    let maxNum = 0;
+    for (const p of products) {
+      if (p.code && /^PRD\d+$/i.test(p.code)) {
+        const num = parseInt(p.code.replace(/[^\d]/g, ''), 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
+    }
+    const nextNum = maxNum + 1;
+    return 'PRD' + String(nextNum).padStart(3, '0');
+  },
+
+  // ⚠️ اختيار الصورة من الكاميرا
+  pickFromCamera() {
+    const inp = document.getElementById('prodImageInputCamera');
+    if (inp) inp.click();
+  },
+
+  // ⚠️ اختيار الصورة من المعرض
+  pickFromGallery() {
+    const inp = document.getElementById('prodImageInputGallery');
+    if (inp) inp.click();
+  },
+
+  // ⚠️ اختيار الصورة من الملفات
+  pickFromFiles() {
+    const inp = document.getElementById('prodImageInputFiles');
+    if (inp) inp.click();
+  },
+
+  // ⚠️ دالة عامة للاختيار
+  pickImage() {
+    Products.pickFromGallery();
+  },
+
   onImagePicked(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -3534,6 +3667,7 @@ pickImage() {
     };
     reader.readAsDataURL(file);
   },
+
   async remove(id) {
     if (!requirePermission('delete_anything', 'حذف')) return;
     if (!confirm('حذف المنتج؟')) return;
@@ -3541,7 +3675,7 @@ pickImage() {
     Toast.show('تم الحذف');
   }
 };
-
+   
 /* ═══════════════════════════════════════════════════════════════════
    27. Partners (العملاء والموردون)
    ═══════════════════════════════════════════════════════════════════ */
