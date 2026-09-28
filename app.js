@@ -2140,21 +2140,38 @@ const App = {
       Sync.updateBar();
     });
 
-    FBAuth.onAuthStateChanged(function (user) {
-      App.hideLoading();
-      if (user) {
-        State.currentUser = user;
-        const companyId = localStorage.getItem('company_id');
-        if (companyId) {
-          State.currentCompanyId = companyId;
-          App.loadCompanyData();
-        } else App.findUserCompany(user.uid);
-      } else {
-        State.currentUser = null;
-        App.showScreen('screenWelcome');
-      }
-    });
+    FBAuth.onAuthStateChanged(async function (user) {
+  App.hideLoading();
 
+  if (!user) {
+    State.currentUser = null;
+    State.currentEmployee = null;
+    State.companyRef = null;
+    State.listeners = [];
+    App.showScreen('screenWelcome');
+    return;
+  }
+
+  State.currentUser = user;
+
+  if (App._loadingCompany) {
+    console.log('⏭️ loadCompanyData already in progress, skipping');
+    return;
+  }
+
+  const companyId = localStorage.getItem('company_id');
+  if (companyId) {
+    State.currentCompanyId = companyId;
+    App._loadingCompany = true;
+    try {
+      await App.loadCompanyData();
+    } finally {
+      App._loadingCompany = false;
+    }
+  } else {
+    App.findUserCompany(user.uid);
+  }
+});
     window.addEventListener('popstate', App.handleBack);
     history.pushState({ page: 'home' }, '', '');
 
@@ -2522,19 +2539,81 @@ const App = {
   });
 },
 
-  watchEmployeeStatus() {
+    watchEmployeeStatus() {
     if (!State.currentCompanyId || !State.currentUser) return;
     const ref = FBDB.ref('companies/' + State.currentCompanyId + '/employees/' + State.currentUser.uid);
     ref.on('value', function (snap) {
       const data = snap.val();
       if (!data || data.active === false) {
         Toast.show('🚫 تم إلغاء حسابك', 'error');
-        setTimeout(function () { Auth.logout(); }, 2000);
+        setTimeout(function () { App.safeLogout('account_disabled'); }, 2000);
       } else {
         State.currentEmployee = data;
         Menu.render();
       }
     });
+  },
+
+  async safeLogout(reason) {
+    console.log('🔓 Safe logout triggered:', reason || 'unspecified');
+    try {
+      try { App.stopAllListeners(); } catch (e) { console.warn('stopAllListeners:', e); }
+      try { LocationService.stopWatching(); } catch (e) { console.warn('stopWatching:', e); }
+      try { if (typeof CameraHelper !== 'undefined' && CameraHelper._cleanup) CameraHelper._cleanup(); } catch (e) {}
+      try { if (typeof Scanner !== 'undefined' && Scanner.stop) await Scanner.stop(); } catch (e) {}
+
+      try {
+        document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+        State._modalCallback = null;
+        State._modalCallbacks = [];
+      } catch (e) {}
+
+      try {
+        if (FBDB && State.deviceId && State.currentCompanyId) {
+          await FBDB.ref('companies/' + State.currentCompanyId + '/devices/' + State.deviceId)
+            .update({ last_seen: Utils.nowISO() });
+        }
+      } catch (e) { console.warn('device last_seen:', e); }
+
+      try { await FBAuth.signOut(); } catch (e) { console.warn('signOut:', e); }
+
+      State.currentUser = null;
+      State.currentEmployee = null;
+      State.currentCompanyName = '';
+      State.companyRef = null;
+      State.listeners = [];
+      State._saleFormActive = false;
+      State._purchaseFormActive = false;
+      State._returnFormActive = false;
+      State._initialized = { sales: false, purchase: false, returns: false };
+
+      try { localStorage.removeItem('company_id'); } catch (e) {}
+
+      try {
+        if (typeof saleItems !== 'undefined') saleItems.length = 0;
+        if (typeof purItems !== 'undefined') purItems.length = 0;
+        if (typeof retItems !== 'undefined') retItems.length = 0;
+      } catch (e) {}
+
+      const mainApp = document.getElementById('mainApp');
+      if (mainApp) mainApp.classList.add('hidden');
+      App.showScreen('screenWelcome');
+
+      console.log('✅ Safe logout complete');
+      return true;
+    } catch (fatal) {
+      console.error('❌❌ Safe logout fatal:', fatal);
+      try {
+        const mainApp = document.getElementById('mainApp');
+        if (mainApp) mainApp.classList.add('hidden');
+        document.querySelectorAll('.auth-screen').forEach(function (s) { s.classList.add('hidden'); });
+        const welcome = document.getElementById('screenWelcome');
+        if (welcome) welcome.classList.remove('hidden');
+      } catch (e2) {
+        location.reload();
+      }
+      return false;
+    }
   }
 };
 
