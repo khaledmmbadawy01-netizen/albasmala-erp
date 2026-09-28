@@ -470,10 +470,13 @@ const Toast = {
 const Modal = {
   open(title, bodyHtml, onSave, cancelText, allowStack) {
     cancelText = cancelText || 'إغلاق';
-    State._modalCallback = onSave;
     if (!allowStack) {
       const existing = document.querySelector('.modal-overlay');
       if (existing) existing.remove();
+      State._modalCallback = onSave || null;
+    } else {
+      // modal فوق modal → نحفظ الـ callback الجديد
+      State._modalCallback = onSave || null;
     }
     const html =
       '<div class="modal-overlay"' + (allowStack ? '' : ' onclick="if(event.target===this)Modal.close()"') + '>' +
@@ -492,21 +495,37 @@ const Modal = {
       '</div>';
     document.body.insertAdjacentHTML('beforeend', html);
   },
+
   close() {
-  const modals = document.querySelectorAll('.modal-overlay');
-  if (modals.length > 0) {
-    modals[modals.length - 1].remove();  // اقفل آخر واحد بس
-  }
-  // ⚠️ لا تمسح _modalCallback لو فيه modal تاني لسه شغال
-  if (document.querySelectorAll('.modal-overlay').length === 0) {
-    State._modalCallback = null;
-  }
-  try {
-    if (typeof Scanner !== 'undefined' && Scanner.stop) {
-      Scanner.stop();
+    const modals = document.querySelectorAll('.modal-overlay');
+    if (modals.length > 0) {
+      modals[modals.length - 1].remove();
     }
-  } catch (e) { }
-},
+    // ⚠️ لا تمسح الـ callback إلا لو مفيش مودالات تانية
+    const remaining = document.querySelectorAll('.modal-overlay');
+    if (remaining.length === 0) {
+      State._modalCallback = null;
+      try {
+        if (typeof Scanner !== 'undefined' && Scanner.stop) {
+          Scanner.stop();
+        }
+      } catch (e) { }
+    }
+  },
+
+  confirm() {
+    if (!State._modalCallback) {
+      Toast.show('لا يوجد حفظ معلق', 'error');
+      return;
+    }
+    try {
+      State._modalCallback();
+    } catch (e) {
+      console.error('Modal confirm error:', e);
+      Toast.show('خطأ: ' + e.message, 'error');
+    }
+  }
+};
 
 /* ═══════════════════════════════════════════════════════════════════
    7. Sync Engine (Offline-First)
