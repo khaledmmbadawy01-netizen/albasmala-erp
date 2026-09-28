@@ -3531,11 +3531,8 @@ const Products = {
       html += '<div class="list-item">' +
         '<div style="display:flex;gap:12px;align-items:center;flex:1;">' + imgHtml +
           '<div class="info" style="margin-right:10px;">' +
-            // ⚠️ الكود أساسي كبير
             (p.code ? '<div style="font-size:18px;font-weight:800;color:var(--gold);letter-spacing:1px;font-family:Courier New,monospace;margin-bottom:2px;">' + Utils.esc(p.code) + '</div>' : '') +
-            // ⚠️ اسم المنتج
             '<h4 style="font-size:14px;margin-bottom:4px;">' + Utils.esc(p.name) + '</h4>' +
-            // ⚠️ الباركود فرعي أصغر
             (p.barcode ? '<p style="font-size:11px;color:var(--text-2);font-family:Courier New,monospace;">📊 ' + Utils.esc(p.barcode) + '</p>' : '') +
             '<p style="font-size:11px;">شراء: ' + Utils.fmtMoney(p.cost_price) + ' | بيع: ' + Utils.fmtMoney(p.sale_price) + '</p>' +
             '<p style="font-size:12px;color:' + (low ? 'var(--red-2)' : 'var(--green-2)') + ';font-weight:600;">المخزون: ' + (p.quantity || 0) + ' ' + Utils.esc(p.unit || 'قطعة') + '</p>' +
@@ -3557,6 +3554,8 @@ const Products = {
     if (!id && !requirePermission('products_add', 'إضافة')) return;
     let p = { name: '', barcode: '', code: '', unit: 'قطعة', cost_price: 0, sale_price: 0, quantity: 0, min_quantity: 5, image: '', origin: 'الصين' };
     if (id) p = (cache.products || []).find(function (x) { return x.id === id; }) || p;
+
+    // ⚠️ تهيئة صورة المنتج في State
     State.editingProductImage = p.image || null;
 
     // ⚠️ توليد الكود التلقائي للمنتج الجديد
@@ -3565,21 +3564,23 @@ const Products = {
       autoCode = Products.generateAutoCode();
     }
 
-    const imgHtml = State.editingProductImage
+    const hasImage = !!State.editingProductImage;
+    const imgHtml = hasImage
       ? '<img src="' + State.editingProductImage + '" id="prodImagePreview" style="width:100%;height:100%;object-fit:cover;">'
-      : '<span style="font-size:36px;color:#666;">📷</span>';
+      : '<span id="prodImagePlaceholder" style="font-size:36px;color:#666;">📷</span>';
 
     const html =
       '<div class="form-group"><label>صورة المنتج</label>' +
-        '<div id="prodImageContainer" style="width:120px;height:120px;border:2px dashed #444;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;margin:0 auto 10px;background:#0a0a0a;overflow:hidden;" onclick="Products.pickImage()">' + imgHtml + '</div>' +
+        '<div id="prodImageContainer" style="width:120px;height:120px;border:2px dashed #444;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;margin:0 auto 10px;background:#0a0a0a;overflow:hidden;position:relative;" onclick="Products.pickImage()">' + imgHtml + '</div>' +
         '<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">' +
           '<button type="button" class="btn btn-primary btn-sm" onclick="Products.pickFromCamera()">📷 كاميرا</button>' +
           '<button type="button" class="btn btn-info btn-sm" onclick="Products.pickFromGallery()">🖼️ المعرض</button>' +
           '<button type="button" class="btn btn-warning btn-sm" onclick="Products.pickFromFiles()">📁 من ملف</button>' +
+          '<button type="button" class="btn btn-danger btn-sm" id="removeImgBtn" onclick="Products.removeImage()" style="' + (hasImage ? '' : 'display:none;') + '">🗑️ حذف الصورة</button>' +
         '</div>' +
-        '<input type="file" id="prodImageInputCamera" accept="image/*" capture="environment" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" onchange="Products.onImagePicked(event)">' +
-        '<input type="file" id="prodImageInputGallery" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" onchange="Products.onImagePicked(event)">' +
-        '<input type="file" id="prodImageInputFiles" accept="*/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" onchange="Products.onImagePicked(event)">' +
+        '<input type="file" id="prodImageInputCamera" accept="image/*" capture="environment" style="display:none;" onchange="Products.onImagePicked(event)">' +
+        '<input type="file" id="prodImageInputGallery" accept="image/*" style="display:none;" onchange="Products.onImagePicked(event)">' +
+        '<input type="file" id="prodImageInputFiles" accept="image/*,application/octet-stream" style="display:none;" onchange="Products.onImagePicked(event)">' +
       '</div>' +
       '<div class="form-group"><label>اسم المنتج *</label><input id="p_name" value="' + Utils.esc(p.name || '') + '"></div>' +
       '<div class="form-group"><label>الباركود</label>' +
@@ -3604,10 +3605,11 @@ const Products = {
       '<div class="form-group"><label>الحد الأدنى</label><input id="p_min" type="number" value="' + (p.min_quantity || 5) + '"></div>';
 
     Modal.open(id ? '✏️ تعديل منتج' : '➕ إضافة منتج', html, async function () {
-      const name = document.getElementById('p_name').value.trim();
+      const nameEl = document.getElementById('p_name');
+      if (!nameEl) return Toast.show('خطأ: النموذج مغلق', 'error');
+      const name = nameEl.value.trim();
       if (!name) return Toast.show('اسم المنتج مطلوب', 'error');
 
-      // ⚠️ تحديد الكود: يدوي أو تلقائي
       const manualCode = document.getElementById('p_code').value.trim();
       const autoCodeVal = document.getElementById('p_code_auto').value.trim();
       const finalCode = manualCode || autoCodeVal;
@@ -3635,7 +3637,6 @@ const Products = {
     });
   },
 
-  // ⚠️ توليد الكود التلقائي المتسلسل
   generateAutoCode() {
     const products = cache.products || [];
     let maxNum = 0;
@@ -3649,7 +3650,6 @@ const Products = {
     return 'PRD' + String(nextNum).padStart(3, '0');
   },
 
-  // ⚠️ الكاميرا — نستخدم CameraHelper.captureFromCamera
   async pickFromCamera() {
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -3657,6 +3657,7 @@ const Products = {
         if (photo) {
           State.editingProductImage = photo;
           Products.updateImagePreview(photo);
+          Products.showRemoveBtn();
           Toast.show('✅ تم التقاط الصورة');
         }
         return;
@@ -3668,13 +3669,11 @@ const Products = {
     }
   },
 
-  // ⚠️ المعرض
   pickFromGallery() {
     const inp = document.getElementById('prodImageInputGallery');
     if (inp) inp.click();
   },
 
-  // ⚠️ من ملف — accept="*/*" عشان يفتح مدير الملفات مش المعرض
   pickFromFiles() {
     const inp = document.getElementById('prodImageInputFiles');
     if (inp) inp.click();
@@ -3684,23 +3683,48 @@ const Products = {
     Products.pickFromGallery();
   },
 
-  // ⚠️ دالة موحّدة لتحديث preview الصورة
+  // ⚠️ تحديث preview الصورة
   updateImagePreview(dataUrl) {
-    let preview = document.getElementById('prodImagePreview');
-    if (preview) {
-      preview.src = dataUrl;
-      preview.style.display = 'block';
-    } else {
-      const container = document.getElementById('prodImageContainer');
-      if (container) {
-        container.innerHTML = '<img src="' + dataUrl + '" id="prodImagePreview" style="width:100%;height:100%;object-fit:cover;">';
-      }
+    const container = document.getElementById('prodImageContainer');
+    if (container) {
+      container.innerHTML = '<img src="' + dataUrl + '" id="prodImagePreview" style="width:100%;height:100%;object-fit:cover;">';
     }
+  },
+
+  // ⚠️ إظهار زر حذف الصورة
+  showRemoveBtn() {
+    const btn = document.getElementById('removeImgBtn');
+    if (btn) btn.style.display = '';
+  },
+
+  // ⚠️ إخفاء زر حذف الصورة
+  hideRemoveBtn() {
+    const btn = document.getElementById('removeImgBtn');
+    if (btn) btn.style.display = 'none';
+  },
+
+  // ⚠️ حذف الصورة
+  removeImage() {
+    if (!State.editingProductImage) {
+      Toast.show('لا توجد صورة لحذفها', 'info');
+      return;
+    }
+    if (!confirm('هل تريد حذف صورة المنتج؟')) return;
+    State.editingProductImage = null;
+    const container = document.getElementById('prodImageContainer');
+    if (container) {
+      container.innerHTML = '<span id="prodImagePlaceholder" style="font-size:36px;color:#666;">📷</span>';
+    }
+    Products.hideRemoveBtn();
+    Toast.show('🗑️ تم حذف الصورة (لن تُحفظ إلا بعد الضغط على حفظ)', 'success');
   },
 
   onImagePicked(event) {
     const file = event.target.files[0];
-    if (!file) return;
+    if (!file) {
+      event.target.value = '';
+      return;
+    }
     if (file.size > 700000) {
       Toast.show('الصورة كبيرة (الحد 700KB)', 'error');
       event.target.value = '';
@@ -3720,6 +3744,7 @@ const Products = {
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         State.editingProductImage = canvas.toDataURL('image/jpeg', 0.7);
         Products.updateImagePreview(State.editingProductImage);
+        Products.showRemoveBtn();
         Toast.show('✅ تم اختيار الصورة');
       };
       img.src = e.target.result;
