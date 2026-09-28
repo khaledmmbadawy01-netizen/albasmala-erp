@@ -2635,23 +2635,45 @@ const Menu = {
     document.getElementById('menuGrid').innerHTML = html;
     Menu.updateRequestsBadge();
   },
-  updateRequestsBadge() {
-    const pending = (cache.pending_requests || []).filter(function (r) { return r.status === 'pending'; }).length;
-    const badge = document.getElementById('requestsBadge');
-    const banner = document.getElementById('pendingRequestsBanner');
-    if (badge) {
-      if (pending > 0) { badge.textContent = pending; badge.classList.remove('hidden'); }
-      else badge.classList.add('hidden');
+    updateRequestsBadge() {
+    try {
+      // ⚠️ لو مفيش مستخدم مسجل، اطلع
+      if (!State.currentEmployee) return;
+
+      const pending = (cache.pending_requests || []).filter(function (r) {
+        return r && r.status === 'pending';
+      }).length;
+
+      const badge = document.getElementById('requestsBadge');
+      const banner = document.getElementById('pendingRequestsBanner');
+
+      if (badge) {
+        if (pending > 0) {
+          badge.textContent = pending;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+      }
+
+      if (banner) {
+        if (pending > 0 && can('requests_manage')) {
+          banner.innerHTML =
+            '<div class="card" style="border-color:var(--orange-2);background:rgba(255,167,38,.1);">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+                '<strong style="color:var(--orange-2);">📩 لديك ' + pending + ' طلب انضمام</strong>' +
+                '<button class="btn btn-warning btn-sm" onclick="App.openPage(\'requests\')">عرض</button>' +
+              '</div>' +
+            '</div>';
+        } else {
+          banner.innerHTML = '';
+        }
+      }
+    } catch (e) {
+      console.warn('updateRequestsBadge error:', e);
     }
-    if (banner && pending > 0 && can('requests_manage')) {
-      banner.innerHTML = '<div class="card" style="border-color:var(--orange-2);background:rgba(255,167,38,.1);">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-        '<strong style="color:var(--orange-2);">📩 لديك ' + pending + ' طلب انضمام</strong>' +
-        '<button class="btn btn-warning btn-sm" onclick="App.openPage(\'requests\')">عرض</button>' +
-        '</div></div>';
-    } else if (banner) banner.innerHTML = '';
-  }
-};
+  },  // ⚠️ الفاصلة دي مهمة
+};  // ⚠️ قفل كائن Menu
 
 /* ═══════════════════════════════════════════════════════════════════
    21. Dashboard
