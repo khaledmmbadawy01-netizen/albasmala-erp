@@ -2278,8 +2278,6 @@ const Auth = {
     // 9. امسح بيانات الجلسة (بس خلي company_id محفوظ)
     State.currentUser = null;
     State.currentEmployee = null;
-    // ⚠️ لا تمسح company_id — محفوظ في localStorage للجلسة القادمة
-    // State.currentCompanyId = null;
 
     // 10. اقفل mainApp واعرض شاشة الترحيب
     const mainApp = document.getElementById('mainApp');
@@ -2293,7 +2291,6 @@ const Auth = {
     App.showScreen('screenWelcome');
   } catch (e) {
     console.error('logout error:', e);
-    // في حالة الفشل، اعرض الشاشة الرئيسية على أي حال
     try {
       const mainApp = document.getElementById('mainApp');
       if (mainApp) mainApp.classList.add('hidden');
