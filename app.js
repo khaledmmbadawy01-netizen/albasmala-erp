@@ -3617,28 +3617,67 @@ const Payroll = {
    ═══════════════════════════════════════════════════════════════════ */
 const Products = {
   render() {
-  // ⚠️ اجمع من cache + pending_changes عشان أي منتج محفوظ يظهر فوراً
-  let allProducts = (cache.products || []).slice();
+  // ⚠️ اجمع المنتجات من كل المصادر الممكنة عشان نضمن الظهور
+  const productsMap = {};
+
+  // 1. من cache
+  (cache.products || []).forEach(function (p) {
+    if (p && p.id) productsMap[p.id] = p;
+  });
+
+  // 2. من offline_data (المحفوظ محلياً)
+  try {
+    const offlineKey = 'offline_data_' + State.currentCompanyId + '_products';
+    const offline = JSON.parse(localStorage.getItem(offlineKey) || '{}');
+    for (const id in offline) {
+      if (offline[id] && offline[id].id) productsMap[offline[id].id] = offline[id];
+    }
+  } catch (e) {}
+
+  // 3. من pending_changes (اللي لسه ما اترفعتش)
   try {
     const pendingKey = 'pending_changes_' + State.currentCompanyId;
     const pending = JSON.parse(localStorage.getItem(pendingKey) || '[]');
-    for (const p of pending) {
-      if (p.store === 'products' && p.data && p.data.active !== false) {
-        const idx = allProducts.findIndex(function (x) { return x.id === p.data.id; });
-        if (idx >= 0) allProducts[idx] = p.data;
-        else allProducts.push(p.data);
+    for (const item of pending) {
+      if (item.store === 'products' && item.data && item.data.id) {
+        productsMap[item.data.id] = item.data;
       }
     }
   } catch (e) {}
 
+  // 4. من cache المحلي (cache_)
+  try {
+    const cacheKey = 'cache_' + State.currentCompanyId + '_products';
+    const localCache = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+    if (Array.isArray(localCache)) {
+      localCache.forEach(function (p) {
+        if (p && p.id) productsMap[p.id] = p;
+      });
+    }
+  } catch (e) {}
+
+  // ⚠️ حوّل الـ map لمصفوفة
+  let allProducts = Object.values(productsMap);
+
+  // ⚠️ لو لسه فاضية، جرب cache.products مباشرة
+  if (allProducts.length === 0 && cache.products && cache.products.length > 0) {
+    allProducts = cache.products.slice();
+  }
+
   const search = (document.getElementById('prodSearch') ? document.getElementById('prodSearch').value : '').trim();
-  let prods = allProducts.filter(function (p) { return p.active !== false; });
+  let prods = allProducts.filter(function (p) { return p && p.active !== false; });
   if (search) prods = prods.filter(function (p) {
     return (p.name || '').includes(search) || (p.barcode || '').includes(search) || (p.code || '').includes(search);
   });
 
+  // ⚠️ ترتيب — الأحدث أول
+  prods.sort(function (a, b) {
+    return (b.created_at || '').localeCompare(a.created_at || '');
+  });
+
   const addBtn = document.getElementById('prodAddBtn');
   if (addBtn) addBtn.style.display = can('products_add') ? 'flex' : 'none';
+
   if (prods.length === 0) {
     document.getElementById('prodList').innerHTML = '<div class="empty"><div class="ico">📦</div>لا توجد منتجات</div>';
     return;
