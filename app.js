@@ -2523,8 +2523,11 @@ const App = {
     else if (page === 'settings') Settings.render();
     window.scrollTo(0, 0);
   },
-  goHome() { App.openPage('home'); },
-  handleBack() {
+goHome() { App.openPage('home'); },
+// ⚠️ Alias — عشان زرار الرجوع في الشريط العلوي
+goBack() { App.handleBack(); },
+   
+handleBack() {
     const now = Date.now();
     const modal = document.querySelector('.modal-overlay');
     if (modal) { Modal.close(); history.pushState({ page: State.currentPage }, '', ''); return; }
