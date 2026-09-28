@@ -108,11 +108,6 @@ try {
 /* ═══════════════════════════════════════════════════════════════════
    2. Global State
    ═══════════════════════════════════════════════════════════════════ */
-const CURRENCY = 'ج.م';
-const EARTH_RADIUS = 6371000;
-const WORK_DAYS_PER_MONTH = 30;
-const APP_VERSION = '2026.3';
-
 const State = {
   currentUser: null,
   currentEmployee: null,
@@ -145,7 +140,8 @@ const State = {
   pinCallback: null,
   attendancePhotoData: null,
   pendingBarcodeAction: null,
-  lateMinutesCache: {}
+  lateMinutesCache: {},
+  _scannedBarcode: null
 };
 
 const cache = {
@@ -1302,30 +1298,38 @@ const Scanner = {
       return x.barcode === code || x.code === code;
     });
 
-    // ⚠️ حالة 'field': نحط الكود في الحقل الأصلي
-    if (target === 'field') {
-      // 1. اقفل مودال الكاميرا
-      try {
-        const modals = document.querySelectorAll('.modal-overlay');
-        if (modals.length > 0) {
-          modals[modals.length - 1].remove();
-        }
-      } catch (e) {}
-
-      // 2. حدّث الحقل
-      setTimeout(function () {
-        const el = document.getElementById('p_barcode');
-        if (el) {
-          el.value = code;
-          // ⚠️ حدّث State عشان لو المستخدم ضغط حفظ يتحفظ الكود
-          try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
-          Toast.show('✅ تم إدخال الباركود: ' + code);
-        } else {
-          Toast.show('✅ تم المسح: ' + code, 'info');
-        }
-      }, 300);
-      return;
+   // ⚠️ حالة 'field': نحط الكود في الحقل الأصلي
+if (target === 'field') {
+  // 1. اقفل مودال الكاميرا
+  try {
+    const modals = document.querySelectorAll('.modal-overlay');
+    if (modals.length > 0) {
+      modals[modals.length - 1].remove();
     }
+  } catch (e) {}
+
+  // 2. نحفظ الكود في State كنسخة احتياطية
+  State._scannedBarcode = code;
+
+  // 3. حدّث الحقل (بعد ما المودال يتقفل)
+  setTimeout(function () {
+    const el = document.getElementById('p_barcode');
+    if (el) {
+      el.value = code;
+      // ⚠️ نعمل dispatch لـ input + change عشان أي listener يشتغل
+      try {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      } catch (e) {}
+      // ⚠️ نعمل focus عشان المستخدم يشوف التحديث
+      try { el.focus(); } catch (e) {}
+      Toast.show('✅ تم إدخال الباركود: ' + code);
+    } else {
+      Toast.show('✅ تم المسح: ' + code, 'info');
+    }
+  }, 350);
+  return;
+}
 
     // ⚠️ حالة 'search'
     if (target === 'search') {
