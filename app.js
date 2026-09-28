@@ -3626,7 +3626,7 @@ const Products = {
     const pendingKey = 'pending_changes_' + State.currentCompanyId;
     const pending = JSON.parse(localStorage.getItem(pendingKey) || '[]');
     for (const p of pending) {
-      if (p.store === 'products' && p.data && !p.data.active === false) {
+      if (p.store === 'products' && p.data && p.data.active !== false) {
         const idx = allProducts.findIndex(function (x) { return x.id === p.data.id; });
         if (idx >= 0) allProducts[idx] = p.data;
         else allProducts.push(p.data);
@@ -3639,36 +3639,37 @@ const Products = {
   if (search) prods = prods.filter(function (p) {
     return (p.name || '').includes(search) || (p.barcode || '').includes(search) || (p.code || '').includes(search);
   });
-    const addBtn = document.getElementById('prodAddBtn');
-    if (addBtn) addBtn.style.display = can('products_add') ? 'flex' : 'none';
-    if (prods.length === 0) {
-      document.getElementById('prodList').innerHTML = '<div class="empty"><div class="ico">📦</div>لا توجد منتجات</div>';
-      return;
-    }
-    let html = '';
-    for (const p of prods) {
-      const low = (Number(p.quantity) || 0) <= (Number(p.min_quantity) || 5);
-      const imgHtml = p.image
-        ? '<img src="' + p.image + '" style="width:70px;height:70px;border-radius:10px;border:2px solid #333;object-fit:cover;background:#0a0a0a;flex-shrink:0;">'
-        : '<div style="width:70px;height:70px;border-radius:10px;border:2px solid #333;background:linear-gradient(135deg,#1a1a1a,#0a0a0a);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;">📦</div>';
-      html += '<div class="list-item">' +
-        '<div style="display:flex;gap:12px;align-items:center;flex:1;">' + imgHtml +
-          '<div class="info" style="margin-right:10px;">' +
-            (p.code ? '<div style="font-size:18px;font-weight:800;color:var(--gold);letter-spacing:1px;font-family:Courier New,monospace;margin-bottom:2px;">' + Utils.esc(p.code) + '</div>' : '') +
-            '<h4 style="font-size:14px;margin-bottom:4px;">' + Utils.esc(p.name) + '</h4>' +
-            (p.barcode ? '<p style="font-size:11px;color:var(--text-2);font-family:Courier New,monospace;">📊 ' + Utils.esc(p.barcode) + '</p>' : '') +
-            '<p style="font-size:11px;">شراء: ' + Utils.fmtMoney(p.cost_price) + ' | بيع: ' + Utils.fmtMoney(p.sale_price) + '</p>' +
-            '<p style="font-size:12px;color:' + (low ? 'var(--red-2)' : 'var(--green-2)') + ';font-weight:600;">المخزون: ' + (p.quantity || 0) + ' ' + Utils.esc(p.unit || 'قطعة') + '</p>' +
-          '</div>' +
+
+  const addBtn = document.getElementById('prodAddBtn');
+  if (addBtn) addBtn.style.display = can('products_add') ? 'flex' : 'none';
+  if (prods.length === 0) {
+    document.getElementById('prodList').innerHTML = '<div class="empty"><div class="ico">📦</div>لا توجد منتجات</div>';
+    return;
+  }
+  let html = '';
+  for (const p of prods) {
+    const low = (Number(p.quantity) || 0) <= (Number(p.min_quantity) || 5);
+    const imgHtml = p.image
+      ? '<img src="' + p.image + '" style="width:70px;height:70px;border-radius:10px;border:2px solid #333;object-fit:cover;background:#0a0a0a;flex-shrink:0;">'
+      : '<div style="width:70px;height:70px;border-radius:10px;border:2px solid #333;background:linear-gradient(135deg,#1a1a1a,#0a0a0a);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;">📦</div>';
+    html += '<div class="list-item">' +
+      '<div style="display:flex;gap:12px;align-items:center;flex:1;">' + imgHtml +
+        '<div class="info" style="margin-right:10px;">' +
+          (p.code ? '<div style="font-size:18px;font-weight:800;color:var(--gold);letter-spacing:1px;font-family:Courier New,monospace;margin-bottom:2px;">' + Utils.esc(p.code) + '</div>' : '') +
+          '<h4 style="font-size:14px;margin-bottom:4px;">' + Utils.esc(p.name) + '</h4>' +
+          (p.barcode ? '<p style="font-size:11px;color:var(--text-2);font-family:Courier New,monospace;">📊 ' + Utils.esc(p.barcode) + '</p>' : '') +
+          '<p style="font-size:11px;">شراء: ' + Utils.fmtMoney(p.cost_price) + ' | بيع: ' + Utils.fmtMoney(p.sale_price) + '</p>' +
+          '<p style="font-size:12px;color:' + (low ? 'var(--red-2)' : 'var(--green-2)') + ';font-weight:600;">المخزون: ' + (p.quantity || 0) + ' ' + Utils.esc(p.unit || 'قطعة') + '</p>' +
         '</div>' +
-        '<div class="actions">' +
-          (can('products_edit') ? '<button class="btn btn-primary btn-sm" onclick="Products.edit(\'' + p.id + '\')">✏️</button>' : '') +
-          (can('delete_anything') ? '<button class="btn btn-danger btn-sm" onclick="Products.remove(\'' + p.id + '\')">🗑️</button>' : '') +
-        '</div>' +
-      '</div>';
-    }
-    document.getElementById('prodList').innerHTML = html;
-  },
+      '</div>' +
+      '<div class="actions">' +
+        (can('products_edit') ? '<button class="btn btn-primary btn-sm" onclick="Products.edit(\'' + p.id + '\')">✏️</button>' : '') +
+        (can('delete_anything') ? '<button class="btn btn-danger btn-sm" onclick="Products.remove(\'' + p.id + '\')">🗑️</button>' : '') +
+      '</div>' +
+    '</div>';
+  }
+  document.getElementById('prodList').innerHTML = html;
+},
 
   search: Utils.debounce(function () { Products.render(); }, 250),
 
