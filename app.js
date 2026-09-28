@@ -99,6 +99,7 @@ const State = {
   locationWatchId: null,
   editingProductImage: null,
   _modalCallback: null,
+  _modalCallbacks: [],
   scanner: null,
   calcState: { current: '0', history: '', operator: null, operand: 0, shouldReset: false },
   pinBuffer: '',
@@ -298,7 +299,7 @@ function requirePermission(permission, action) {
     return false;
   }
   return true;
-       }
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    4. Utils
