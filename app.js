@@ -2232,24 +2232,67 @@ const Auth = {
     });
   },
   async logout() {
+  try {
+    // 1. تأكيد قبل الخروج
     if (State.currentEmployee && !confirm('تسجيل الخروج؟')) return;
-    Activity.log('logout', 'خروج: ' + (State.currentEmployee ? State.currentEmployee.name : ''));
-    App.stopAllListeners();
-    LocationService.stopWatching();
-    if (FBDB && State.deviceId && State.currentCompanyId) {
-      try {
+
+    // 2. سجّل الخروج (await عشان يخلص قبل أي حاجة)
+    try {
+      if (State.currentEmployee) {
+        await Activity.log('logout', 'خروج: ' + State.currentEmployee.name);
+      }
+    } catch (e) {}
+
+    // 3. وقف كل الـ listeners
+    try { App.stopAllListeners(); } catch (e) {}
+
+    // 4. وقف تتبع الموقع
+    try { LocationService.stopWatching(); } catch (e) {}
+
+    // 5. وقف الكاميرا لو شغالة
+    try { if (typeof CameraHelper !== 'undefined') CameraHelper._cleanup(); } catch (e) {}
+
+    // 6. وقف الاسكانر لو شغال
+    try { if (typeof Scanner !== 'undefined' && Scanner.stop) await Scanner.stop(); } catch (e) {}
+
+    // 7. حدّث آخر ظهور للجهاز
+    try {
+      if (FBDB && State.deviceId && State.currentCompanyId) {
         await FBDB.ref('companies/' + State.currentCompanyId + '/devices/' + State.deviceId).update({
           last_seen: Utils.nowISO()
         });
-      } catch (e) {}
-    }
-    await FBAuth.signOut();
+      }
+    } catch (e) {}
+
+    // 8. سجّل الخروج من Firebase
+    try { await FBAuth.signOut(); } catch (e) {}
+
+    // 9. امسح بيانات الجلسة (بس خلي company_id محفوظ)
     State.currentUser = null;
     State.currentEmployee = null;
-    State.currentCompanyId = null;
-    document.getElementById('mainApp').classList.add('hidden');
+    // ⚠️ لا تمسح company_id — محفوظ في localStorage للجلسة القادمة
+    // State.currentCompanyId = null;
+
+    // 10. اقفل mainApp واعرض شاشة الترحيب
+    const mainApp = document.getElementById('mainApp');
+    if (mainApp) mainApp.classList.add('hidden');
+
+    // 11. اقفل أي مودال مفتوح
+    try {
+      document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+    } catch (e) {}
+
     App.showScreen('screenWelcome');
+  } catch (e) {
+    console.error('logout error:', e);
+    // في حالة الفشل، اعرض الشاشة الرئيسية على أي حال
+    try {
+      const mainApp = document.getElementById('mainApp');
+      if (mainApp) mainApp.classList.add('hidden');
+      App.showScreen('screenWelcome');
+    } catch (e2) {}
   }
+        }
 };
 
 /* ═══════════════════════════════════════════════════════════════════
