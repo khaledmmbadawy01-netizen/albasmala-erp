@@ -3620,11 +3620,25 @@ const Payroll = {
    ═══════════════════════════════════════════════════════════════════ */
 const Products = {
   render() {
-    const search = (document.getElementById('prodSearch') ? document.getElementById('prodSearch').value : '').trim();
-    let prods = (cache.products || []).filter(function (p) { return p.active !== false; });
-    if (search) prods = prods.filter(function (p) {
-      return (p.name || '').includes(search) || (p.barcode || '').includes(search) || (p.code || '').includes(search);
-    });
+  // ⚠️ اجمع من cache + pending_changes عشان أي منتج محفوظ يظهر فوراً
+  let allProducts = (cache.products || []).slice();
+  try {
+    const pendingKey = 'pending_changes_' + State.currentCompanyId;
+    const pending = JSON.parse(localStorage.getItem(pendingKey) || '[]');
+    for (const p of pending) {
+      if (p.store === 'products' && p.data && !p.data.active === false) {
+        const idx = allProducts.findIndex(function (x) { return x.id === p.data.id; });
+        if (idx >= 0) allProducts[idx] = p.data;
+        else allProducts.push(p.data);
+      }
+    }
+  } catch (e) {}
+
+  const search = (document.getElementById('prodSearch') ? document.getElementById('prodSearch').value : '').trim();
+  let prods = allProducts.filter(function (p) { return p.active !== false; });
+  if (search) prods = prods.filter(function (p) {
+    return (p.name || '').includes(search) || (p.barcode || '').includes(search) || (p.code || '').includes(search);
+  });
     const addBtn = document.getElementById('prodAddBtn');
     if (addBtn) addBtn.style.display = can('products_add') ? 'flex' : 'none';
     if (prods.length === 0) {
@@ -3745,30 +3759,35 @@ State.editingProductImage = p.image || null;
         active: true,
         created_at: p.created_at || Utils.nowISO()
       };
-   await Sync.save('products', newId, data);
-
-    // ⚠️ حدّث cache فوراً عشان المنتج يظهر في القائمة
+   // ⚠️ 1. حدّث cache فوراً (قبل await)
     try {
       const idx = (cache.products || []).findIndex(function (x) { return x.id === newId; });
       if (idx >= 0) {
-        cache.products[idx] = data;  // تعديل
+        cache.products[idx] = data;
       } else {
-        cache.products.push(data);   // إضافة جديدة
+        cache.products.push(data);
       }
-      // ⚠️ أعد ترتيب القائمة (الأحدث أول)
       cache.products.sort(function (a, b) {
         return (b.created_at || '').localeCompare(a.created_at || '');
       });
     } catch (e) { console.warn('cache.products update:', e); }
 
-    // ⚠️ أعد عرض القائمة فوراً
+    // ⚠️ 2. أعد عرض القائمة فوراً (قبل await)
     try {
       if (State.currentPage === 'products') Products.render();
     } catch (e) {}
 
+    // ⚠️ 3. اقفل المودال فوراً (قبل await)
     State.editingProductImage = null;
     Modal.close();
-    Toast.show('تم الحفظ — كود: ' + finalCode);
+    Toast.show('✅ تم الحفظ — كود: ' + finalCode);
+
+    // ⚠️ 4. احفظ في Firebase في الخلفية
+    try {
+      await Sync.save('products', newId, data);
+    } catch (e) {
+      console.warn('Sync.save failed:', e);
+    }
   });
 },
 
