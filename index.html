@@ -3080,7 +3080,6 @@ console.log(
      🧠 ملف المنطق الرئيسي
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
-// معالج أخطاء غير قاتل — يسجل الخطأ بس ميمسحش الصفحة
 window.onerror = function(msg, url, line, col, error) {
   console.error('❌ App Error:', msg, url, line, col, error);
   try {
@@ -3097,6 +3096,37 @@ window.onerror = function(msg, url, line, col, error) {
     localStorage.setItem('app_errors', JSON.stringify(logs));
   } catch (e) {}
   return false;
+};
+
+window.addEventListener('unhandledrejection', function (e) {
+  console.error('❌ Unhandled Promise:', e.reason);
+  try {
+    var logs = JSON.parse(localStorage.getItem('app_errors') || '[]');
+    logs.push({
+      ts: new Date().toISOString(),
+      msg: 'Promise: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)),
+      stack: e.reason && e.reason.stack ? String(e.reason.stack).substring(0, 500) : 'N/A'
+    });
+    if (logs.length > 30) logs.splice(0, logs.length - 30);
+    localStorage.setItem('app_errors', JSON.stringify(logs));
+  } catch (err) {}
+  e.preventDefault();
+});
+
+window.showErrorLog = function () {
+  try {
+    var logs = JSON.parse(localStorage.getItem('app_errors') || '[]');
+    if (logs.length === 0) { alert('لا توجد أخطاء مسجلة'); return; }
+    var txt = '📋 آخر ' + logs.length + ' خطأ:\n\n';
+    for (var i = logs.length - 1; i >= Math.max(0, logs.length - 10); i--) {
+      var l = logs[i];
+      txt += '⏰ ' + l.ts + '\n';
+      txt += '📝 ' + l.msg + '\n';
+      if (l.stack && l.stack !== 'N/A') txt += '🔍 ' + l.stack.substring(0, 200) + '\n';
+      txt += '───────────────\n';
+    }
+    alert(txt);
+  } catch (e) { alert('فشل: ' + e.message); }
 };
 </script>
    
