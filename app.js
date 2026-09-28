@@ -17,6 +17,72 @@
 'use strict';
 
 /* ═══════════════════════════════════════════════════════════════════
+   Global Error Handler — يمنع الشاشة السوداء ويسجل الأخطاء
+   ═══════════════════════════════════════════════════════════════════ */
+window.addEventListener('error', function (e) {
+  console.error('🔴 Global Error:', {
+    message: e.message,
+    filename: e.filename,
+    lineno: e.lineno,
+    colno: e.colno,
+    error: e.error
+  });
+  // امنع الشاشة السوداء — سجّل الخطأ بس وكمّل
+  try {
+    const logs = JSON.parse(localStorage.getItem('error_log') || '[]');
+    logs.push({
+      ts: new Date().toISOString(),
+      message: e.message || 'Unknown',
+      filename: e.filename || '',
+      line: e.lineno || 0,
+      col: e.colno || 0,
+      stack: e.error && e.error.stack ? e.error.stack : 'N/A'
+    });
+    // احتفظ بآخر 20 خطأ بس
+    if (logs.length > 20) logs.splice(0, logs.length - 20);
+    localStorage.setItem('error_log', JSON.stringify(logs));
+  } catch (err) {}
+  return true; // امنع الـ default handler
+});
+
+window.addEventListener('unhandledrejection', function (e) {
+  console.error('🔴 Unhandled Promise Rejection:', e.reason);
+  try {
+    const logs = JSON.parse(localStorage.getItem('error_log') || '[]');
+    logs.push({
+      ts: new Date().toISOString(),
+      message: 'Promise: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)),
+      stack: e.reason && e.reason.stack ? e.reason.stack : 'N/A'
+    });
+    if (logs.length > 20) logs.splice(0, logs.length - 20);
+    localStorage.setItem('error_log', JSON.stringify(logs));
+  } catch (err) {}
+  e.preventDefault();
+});
+
+// دالة لعرض الأخطاء المسجلة
+window.showErrorLog = function () {
+  try {
+    const logs = JSON.parse(localStorage.getItem('error_log') || '[]');
+    if (logs.length === 0) {
+      alert('لا توجد أخطاء مسجلة');
+      return;
+    }
+    let txt = '📋 آخر ' + logs.length + ' خطأ:\n\n';
+    for (const l of logs.slice(-10)) {
+      txt += '⏰ ' + l.ts + '\n';
+      txt += '📝 ' + l.message + '\n';
+      txt += '📁 ' + (l.filename || '') + ':' + (l.line || 0) + '\n';
+      if (l.stack && l.stack !== 'N/A') txt += '🔍 ' + l.stack.substring(0, 200) + '\n';
+      txt += '───────────────\n';
+    }
+    alert(txt);
+  } catch (e) {
+    alert('فشل قراءة السجل: ' + e.message);
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════════
    1. Firebase Configuration
    ═══════════════════════════════════════════════════════════════════ */
 const FIREBASE_CONFIG = {
