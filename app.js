@@ -499,18 +499,18 @@ const Modal = {
     } catch (e) {}
   },
 
-  confirm() {
-    if (!State._modalCallback) {
-      Toast.show('لا يوجد حفظ معلق', 'error');
-      return;
-    }
-    try {
-      State._modalCallback();
-    } catch (e) {
-      console.error('Modal confirm error:', e);
-      Toast.show('خطأ: ' + e.message, 'error');
-    }
+  async confirm() {
+  if (!State._modalCallback) {
+    Toast.show('لا يوجد حفظ معلق', 'error');
+    return;
   }
+  try {
+    await State._modalCallback();
+  } catch (e) {
+    console.error('Modal confirm error:', e);
+    Toast.show('❌ خطأ: ' + (e.message || 'غير معروف'), 'error');
+  }
+},
 };
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -749,55 +749,56 @@ const Biometric = {
   },
 
   pinFallback(reason) {
-    return new Promise(function (resolve) {
-      State.pinBuffer = '';
-      State.pinCallback = resolve;
-      const html =
-        '<div style="text-align:center;">' +
-          '<p style="color:var(--text-2);margin-bottom:12px;">' + Utils.esc(reason) + '</p>' +
-          '<p style="color:var(--orange-2);font-size:12px;margin-bottom:10px;">أدخل رمز PIN (الافتراضي: 1234)</p>' +
-          '<div class="pin-display" id="pinDisplay">' +
-            '<div class="pin-dot"></div><div class="pin-dot"></div>' +
-            '<div class="pin-dot"></div><div class="pin-dot"></div>' +
-          '</div>' +
-          '<div class="pin-grid">' +
-            '<button class="pin-btn" onclick="Biometric.pinPress(\'1\')">1</button>' +
-            '<button class="pin-btn" onclick="Biometric.pinPress(\'2\')">2</button>' +
-            '<button class="pin-btn" onclick="Biometric.pinPress(\'3\')">3</button>' +
-            '<button class="pin-btn" onclick="Biometric.pinPress(\'4\')">4</button>' +
-            '<button class="pin-btn" onclick="Biometric.pinPress(\'5\')">5</button>' +
-            '<button class="pin-btn" onclick="Biometric.pinPress(\'6\')">6</button>' +
-            '<button class="pin-btn" onclick="Biometric.pinPress(\'7\')">7</button>' +
-            '<button class="pin-btn" onclick="Biometric.pinPress(\'8\')">8</button>' +
-            '<button class="pin-btn" onclick="Biometric.pinPress(\'9\')">9</button>' +
-            '<button class="pin-btn empty"></button>' +
-            '<button class="pin-btn" onclick="Biometric.pinPress(\'0\')">0</button>' +
-            '<button class="pin-btn del" onclick="Biometric.pinDelete()">⌫</button>' +
-          '</div>' +
-        '</div>';
-      Modal.open('🔒 تأكيد', html, null, 'إلغاء');
-    });
-  },
-
+  return new Promise(function (resolve) {
+    State.pinBuffer = '';
+    State.pinCallback = resolve;
+    const html =
+      '<div style="text-align:center;">' +
+        '<p style="color:var(--text-2);margin-bottom:12px;">' + Utils.esc(reason) + '</p>' +
+        '<div class="pin-display" id="pinDisplay">' +
+          '<div class="pin-dot"></div><div class="pin-dot"></div>' +
+          '<div class="pin-dot"></div><div class="pin-dot"></div>' +
+        '</div>' +
+        '<div class="pin-grid">' +
+          '<button class="pin-btn" onclick="Biometric.pinPress(\'1\')">1</button>' +
+          '<button class="pin-btn" onclick="Biometric.pinPress(\'2\')">2</button>' +
+          '<button class="pin-btn" onclick="Biometric.pinPress(\'3\')">3</button>' +
+          '<button class="pin-btn" onclick="Biometric.pinPress(\'4\')">4</button>' +
+          '<button class="pin-btn" onclick="Biometric.pinPress(\'5\')">5</button>' +
+          '<button class="pin-btn" onclick="Biometric.pinPress(\'6\')">6</button>' +
+          '<button class="pin-btn" onclick="Biometric.pinPress(\'7\')">7</button>' +
+          '<button class="pin-btn" onclick="Biometric.pinPress(\'8\')">8</button>' +
+          '<button class="pin-btn" onclick="Biometric.pinPress(\'9\')">9</button>' +
+          '<button class="pin-btn empty"></button>' +
+          '<button class="pin-btn" onclick="Biometric.pinPress(\'0\')">0</button>' +
+          '<button class="pin-btn del" onclick="Biometric.pinDelete()">⌫</button>' +
+        '</div>' +
+      '</div>';
+    Modal.open('🔒 تأكيد', html, null, 'إلغاء');
+  });
+},
+   
   pinPress(digit) {
-    if (State.pinBuffer.length >= 4) return;
-    State.pinBuffer += digit;
-    Utils.vibrate(30);
-    Biometric.updatePinDisplay();
-    if (State.pinBuffer.length === 4) {
-      setTimeout(function () {
-        const storedPin = localStorage.getItem('user_pin_' + (State.currentUser ? State.currentUser.uid : 'x')) || '1234';
-        if (State.pinBuffer === storedPin) {
-          Modal.close();
-          if (State.pinCallback) State.pinCallback(true);
-        } else {
-          Toast.show('❌ PIN خاطئ', 'error');
-          State.pinBuffer = '';
-          Biometric.updatePinDisplay();
-        }
-      }, 200);
-    }
-  },
+  if (State.pinBuffer.length >= 4) return;
+  State.pinBuffer += digit;
+  Utils.vibrate(30);
+  Biometric.updatePinDisplay();
+  if (State.pinBuffer.length === 4) {
+    setTimeout(function () {
+      const storedPin = localStorage.getItem('user_pin_' + (State.currentUser ? State.currentUser.uid : 'x')) || '0000';
+      //                                                                                            ↑↑↑↑
+      //                                                                     PIN افتراضي مش سهل تخمينه
+      if (State.pinBuffer === storedPin) {
+        Modal.close();
+        if (State.pinCallback) State.pinCallback(true);
+      } else {
+        Toast.show('❌ PIN خاطئ', 'error');
+        State.pinBuffer = '';
+        Biometric.updatePinDisplay();
+      }
+    }, 200);
+  }
+},
 
   pinDelete() {
     State.pinBuffer = State.pinBuffer.slice(0, -1);
@@ -2085,19 +2086,22 @@ const Auth = {
   },
 
   watchApproval(uid) {
-    if (!State.currentCompanyId) return;
-    const ref = FBDB.ref('companies/' + State.currentCompanyId + '/employees/' + uid);
-    const listener = ref.on('value', function (snap) {
-      if (snap.exists() && snap.val().active === true) {
-        ref.off('value', listener);
-        FBDB.ref('companies/' + State.currentCompanyId + '/devices/' + State.deviceId).update({
-          approved: true, status: 'approved', approved_at: Utils.nowISO()
-        });
-        Toast.show('✅ تمت الموافقة!');
-        setTimeout(function () { App.loadCompanyData(); }, 800);
-      }
-    });
-  },
+  if (!State.currentCompanyId) return;
+  const ref = FBDB.ref('companies/' + State.currentCompanyId + '/employees/' + uid);
+
+  const callback = function (snap) {
+    if (snap.exists() && snap.val().active === true) {
+      ref.off('value', callback);
+      FBDB.ref('companies/' + State.currentCompanyId + '/devices/' + State.deviceId).update({
+        approved: true, status: 'approved', approved_at: Utils.nowISO()
+      });
+      Toast.show('✅ تمت الموافقة!');
+      setTimeout(function () { App.loadCompanyData(); }, 800);
+    }
+  };
+
+  ref.on('value', callback);
+},
 
   async logout() {
   if (State.currentEmployee && !confirm('تسجيل الخروج؟')) return;
