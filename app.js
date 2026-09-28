@@ -2296,6 +2296,7 @@ const Auth = {
       if (mainApp) mainApp.classList.add('hidden');
       App.showScreen('screenWelcome');
     } catch (e2) {}
+   }
   }
 };
 
