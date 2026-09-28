@@ -3825,6 +3825,13 @@ State.editingProductImage = p.image || null;
     } catch (e) {
       console.warn('Sync.save failed:', e);
     }
+
+    // ⚠️ 5. أعد عرض القائمة تاني بعد الحفظ (للتأكيد)
+    setTimeout(function () {
+      try {
+        if (State.currentPage === 'products') Products.render();
+      } catch (e) {}
+    }, 1000);
   });
 },
 
