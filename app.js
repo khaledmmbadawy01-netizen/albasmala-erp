@@ -3992,7 +3992,7 @@ const Sales = {
     Sales.calcTotals();
   },
 
-  render() {
+render() {
   const body = document.getElementById('saleItemsBody');
   if (!body) return;
   if (saleItems.length === 0) {
@@ -4083,7 +4083,7 @@ removeItem(i) {
   saleItems.splice(i, 1);
   Sales.render();
 },
-
+   
   calcTotals() {
     const subEl = document.getElementById('saleSubtotal');
     const totEl = document.getElementById('saleTotal');
