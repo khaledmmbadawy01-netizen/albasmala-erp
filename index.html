@@ -3080,19 +3080,23 @@ console.log(
      🧠 ملف المنطق الرئيسي
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
+// معالج أخطاء غير قاتل — يسجل الخطأ بس ميمسحش الصفحة
 window.onerror = function(msg, url, line, col, error) {
-  document.body.innerHTML = 
-    '<div style="padding:20px;background:#000;color:#D4AF37;font-family:monospace;direction:ltr;font-size:13px;min-height:100vh;">' +
-    '<h2 style="color:#ef5350;">❌ خطأ في التطبيق</h2>' +
-    '<p style="color:#D4AF37;"><b>الرسالة:</b></p>' +
-    '<p style="color:#fff;word-break:break-all;">' + msg + '</p>' +
-    '<p style="color:#D4AF37;"><b>الملف:</b></p>' +
-    '<p style="color:#fff;word-break:break-all;">' + url + '</p>' +
-    '<p style="color:#D4AF37;"><b>السطر والعمود:</b></p>' +
-    '<p style="color:#fff;">' + line + ' : ' + col + '</p>' +
-    '<p style="color:#D4AF37;"><b>Stack Trace:</b></p>' +
-    '<pre style="color:#66bb6a;font-size:11px;white-space:pre-wrap;word-break:break-all;background:#111;padding:10px;border-radius:6px;">' + (error && error.stack ? error.stack : 'N/A') + '</pre>' +
-    '</div>';
+  console.error('❌ App Error:', msg, url, line, col, error);
+  try {
+    var logs = JSON.parse(localStorage.getItem('app_errors') || '[]');
+    logs.push({
+      ts: new Date().toISOString(),
+      msg: String(msg),
+      url: String(url || ''),
+      line: line || 0,
+      col: col || 0,
+      stack: error && error.stack ? String(error.stack).substring(0, 500) : 'N/A'
+    });
+    if (logs.length > 30) logs.splice(0, logs.length - 30);
+    localStorage.setItem('app_errors', JSON.stringify(logs));
+  } catch (e) {}
+  return false;
 };
 </script>
    
