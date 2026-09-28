@@ -2510,17 +2510,17 @@ const App = {
   },
 
   watchDeviceApproval() {
-    if (!State.currentCompanyId || !State.deviceId) return;
-    const ref = FBDB.ref('companies/' + State.currentCompanyId + '/devices/' + State.deviceId);
-    ref.on('value', function (snap) {
-      const data = snap.val();
-      if (!data) return;
-      if (data.status === 'rejected' || data.approved === false) {
-        Toast.show('🚫 تم طرد هذا الجهاز', 'error');
-        setTimeout(function () { Auth.logout(); }, 2000);
-      }
-    });
-  },
+  if (!State.currentCompanyId || !State.deviceId) return;
+  const ref = FBDB.ref('companies/' + State.currentCompanyId + '/devices/' + State.deviceId);
+  ref.on('value', function (snap) {
+    const data = snap.val();
+    if (!data) return;
+    if (data.status === 'rejected' || data.approved === false) {
+      Toast.show('🚫 تم طرد هذا الجهاز', 'error');
+      setTimeout(function () { App.safeLogout('device_rejected'); }, 2000);
+    }
+  });
+},
 
   watchEmployeeStatus() {
     if (!State.currentCompanyId || !State.currentUser) return;
