@@ -493,21 +493,20 @@ const Modal = {
     document.body.insertAdjacentHTML('beforeend', html);
   },
   close() {
-    const modals = document.querySelectorAll('.modal-overlay');
-    if (modals.length > 0) {
-      modals[modals.length - 1].remove();
-    }
-    State._modalCallback = null;
-    try {
-      if (typeof Scanner !== 'undefined' && Scanner.stop) {
-        Scanner.stop();
-      }
-    } catch (e) { }
-  },
-  confirm() {
-    if (State._modalCallback) State._modalCallback();
+  const modals = document.querySelectorAll('.modal-overlay');
+  if (modals.length > 0) {
+    modals[modals.length - 1].remove();  // اقفل آخر واحد بس
   }
-};
+  // ⚠️ لا تمسح _modalCallback لو فيه modal تاني لسه شغال
+  if (document.querySelectorAll('.modal-overlay').length === 0) {
+    State._modalCallback = null;
+  }
+  try {
+    if (typeof Scanner !== 'undefined' && Scanner.stop) {
+      Scanner.stop();
+    }
+  } catch (e) { }
+},
 
 /* ═══════════════════════════════════════════════════════════════════
    7. Sync Engine (Offline-First)
