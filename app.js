@@ -553,7 +553,10 @@ const Sync = {
     data._updated_by = State.currentEmployee ? State.currentEmployee.name : 'unknown';
     data._device = State.deviceId;
     Sync.saveLocal(store, id, data);
-    if (!State.companyRef) return false;
+    if (!State.companyRef) {
+      Sync.queuePending(store, id, data);
+      return false;
+    }
     try {
       await State.companyRef.child(store + '/' + id).set(data);
       return true;
