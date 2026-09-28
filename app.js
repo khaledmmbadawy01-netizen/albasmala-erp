@@ -4024,14 +4024,14 @@ render() {
       : '';
     html += '<tr id="saleRow_' + i + '" style="' + (over ? 'background:rgba(198,40,40,.15);' : '') + '">' +
       '<td>' + imgHtml + Utils.esc(it.name) + '<br><small style="color:#888;font-size:10px;">رصيد: ' + it.max + '</small></td>' +
-      '<td><input type="number" id="saleQty_' + i + '" value="' + it.quantity + '" min="1" max="' + it.max + '" ' +
-        'oninput="Sales.onQtyInput(' + i + ',this.value)" ' +
-        'onchange="Sales.onQtyChange(' + i + ',this.value)" ' +
-        'onblur="Sales.onQtyChange(' + i + ',this.value)"></td>' +
-      '<td><input type="number" id="salePrice_' + i + '" value="' + it.price + '" ' +
-        'oninput="Sales.onPriceInput(' + i + ',this.value)" ' +
-        'onchange="Sales.onPriceChange(' + i + ',this.value)" ' +
-        'onblur="Sales.onPriceChange(' + i + ',this.value)"></td>' +
+      '<td><input type="text" inputmode="decimal" pattern="[0-9]*" id="saleQty_' + i + '" value="' + it.quantity + '" ' +
+  'onchange="Sales.onQtyChange(' + i + ',this.value)" ' +
+  'onblur="Sales.onQtyChange(' + i + ',this.value)" ' +
+  'style="text-align:center;"></td>' +
+'<td><input type="text" inputmode="decimal" pattern="[0-9.]*" id="salePrice_' + i + '" value="' + it.price + '" ' +
+  'onchange="Sales.onPriceChange(' + i + ',this.value)" ' +
+  'onblur="Sales.onPriceChange(' + i + ',this.value)" ' +
+  'style="text-align:center;"></td>' +
       '<td id="saleTotal_' + i + '">' + (it.quantity * it.price).toFixed(2) + '</td>' +
       '<td><button class="btn btn-danger btn-sm" onclick="Sales.removeItem(' + i + ')">×</button></td>' +
     '</tr>';
@@ -4060,18 +4060,16 @@ onQtyInput(i, v) {
 
 onQtyChange(i, v) {
   if (!saleItems[i]) return;
-  const qty = parseInt(v) || 1;
+  let qty = parseInt(v) || 1;
   if (qty > saleItems[i].max) {
-    saleItems[i].quantity = saleItems[i].max;
-    const el = document.getElementById('saleQty_' + i);
-    if (el) el.value = saleItems[i].max;
+    qty = saleItems[i].max;
+    Toast.show('⚠️ الحد الأقصى ' + saleItems[i].max, 'error');
   } else if (qty < 1) {
-    saleItems[i].quantity = 1;
-    const el = document.getElementById('saleQty_' + i);
-    if (el) el.value = 1;
-  } else {
-    saleItems[i].quantity = qty;
+    qty = 1;
   }
+  saleItems[i].quantity = qty;
+  const el = document.getElementById('saleQty_' + i);
+  if (el && String(el.value) !== String(qty)) el.value = qty;
   const totalEl = document.getElementById('saleTotal_' + i);
   if (totalEl) totalEl.textContent = (saleItems[i].quantity * saleItems[i].price).toFixed(2);
   Sales.calcTotals();
