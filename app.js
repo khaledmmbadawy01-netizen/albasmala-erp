@@ -786,6 +786,9 @@ const Biometric = {
    10. Camera Helper
    ═══════════════════════════════════════════════════════════════════ */
 const CameraHelper = {
+  _stream: null,
+  _resolve: null,
+
   async capturePhoto() {
     return new Promise(function (resolve) {
       const html =
@@ -798,6 +801,7 @@ const CameraHelper = {
           '</div>' +
         '</div>';
       Modal.open('📷 صورة إثبات', html, null, 'إغلاق');
+      CameraHelper._resolve = resolve;
       setTimeout(async function () {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
@@ -813,7 +817,6 @@ const CameraHelper = {
           CameraHelper.captureFallback();
         }
       }, 300);
-      CameraHelper._resolve = resolve;
     });
   },
 
@@ -832,7 +835,9 @@ const CameraHelper = {
     CameraHelper._cleanup();
     Modal.close();
     Utils.vibrate(80);
-    if (CameraHelper._resolve) CameraHelper._resolve(dataUrl);
+    const r = CameraHelper._resolve;
+    CameraHelper._resolve = null;
+    if (r) r(dataUrl);
   },
 
   captureFallback() {
@@ -858,7 +863,9 @@ const CameraHelper = {
           const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
           CameraHelper._cleanup();
           Modal.close();
-          if (CameraHelper._resolve) CameraHelper._resolve(dataUrl);
+          const r = CameraHelper._resolve;
+          CameraHelper._resolve = null;
+          if (r) r(dataUrl);
         };
         img.src = ev.target.result;
       };
@@ -867,7 +874,6 @@ const CameraHelper = {
     input.click();
   },
 
-  // ⚠️ التقاط صورة من الكاميرا مباشرة (للمنتجات)
   async captureFromCamera() {
     return new Promise(function (resolve) {
       const html =
@@ -876,7 +882,7 @@ const CameraHelper = {
           '<canvas id="prodCameraCanvas" style="display:none;"></canvas>' +
           '<div style="margin-top:14px;display:flex;gap:8px;justify-content:center;">' +
             '<button class="btn btn-primary" onclick="CameraHelper.takeProductSnapshot()">📸 التقاط</button>' +
-            '<button class="btn btn-warning" onclick="CameraHelper._resolve(null);Modal.close();">❌ إلغاء</button>' +
+            '<button class="btn btn-warning" onclick="CameraHelper.cancelProductCamera()">❌ إلغاء</button>' +
           '</div>' +
         '</div>';
       Modal.open('📷 التقاط صورة المنتج', html, null, 'إلغاء', true);
@@ -893,8 +899,7 @@ const CameraHelper = {
           }
         } catch (e) {
           Toast.show('❌ فشل الوصول للكاميرا', 'error');
-          Modal.close();
-          resolve(null);
+          CameraHelper.cancelProductCamera();
         }
       }, 300);
     });
@@ -913,14 +918,32 @@ const CameraHelper = {
     canvas.getContext('2d').drawImage(video, 0, 0, w, h);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
     CameraHelper._cleanup();
-    Modal.close();
+    const modals = document.querySelectorAll('.modal-overlay');
+    if (modals.length > 0) {
+      modals[modals.length - 1].remove();
+    }
     Utils.vibrate(80);
-    if (CameraHelper._resolve) CameraHelper._resolve(dataUrl);
+    const r = CameraHelper._resolve;
+    CameraHelper._resolve = null;
+    if (r) r(dataUrl);
+  },
+
+  cancelProductCamera() {
+    CameraHelper._cleanup();
+    const modals = document.querySelectorAll('.modal-overlay');
+    if (modals.length > 0) {
+      modals[modals.length - 1].remove();
+    }
+    const r = CameraHelper._resolve;
+    CameraHelper._resolve = null;
+    if (r) r(null);
   },
 
   _cleanup() {
     if (CameraHelper._stream) {
-      CameraHelper._stream.getTracks().forEach(function (t) { t.stop(); });
+      try {
+        CameraHelper._stream.getTracks().forEach(function (t) { t.stop(); });
+      } catch (e) {}
       CameraHelper._stream = null;
     }
   }
