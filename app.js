@@ -432,7 +432,7 @@ const Toast = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
-   6. Modal System (مع دعم modal فوق modal)
+   6. Modal System (مع دعم modal فوق modal + stack للـ callbacks)
    ═══════════════════════════════════════════════════════════════════ */
 const Modal = {
   open(title, bodyHtml, onSave, cancelText, allowStack) {
@@ -440,10 +440,16 @@ const Modal = {
     if (!allowStack) {
       const existing = document.querySelector('.modal-overlay');
       if (existing) existing.remove();
+      // ⚠️ مودال جديد (مش فوق التاني) — نصفّر الـ stack
+      State._modalCallbacks = [];
+      if (onSave) State._modalCallbacks.push(onSave);
       State._modalCallback = onSave || null;
     } else {
-      // ⚠️ modal فوق modal — نحفظ الـ callback الجديد بس لو موجود
-      if (onSave) State._modalCallback = onSave;
+      // ⚠️ modal فوق modal — نضيف الـ callback الجديد لو موجود
+      if (onSave) {
+        State._modalCallbacks.push(onSave);
+        State._modalCallback = onSave;
+      }
     }
     const html =
       '<div class="modal-overlay"' + (allowStack ? '' : ' onclick="if(event.target===this)Modal.close()"') + '>' +
@@ -466,9 +472,20 @@ const Modal = {
   close() {
     const modals = document.querySelectorAll('.modal-overlay');
     if (modals.length > 0) modals[modals.length - 1].remove();
+
+    // ⚠️ شيل آخر callback من الـ stack
+    if (State._modalCallbacks && State._modalCallbacks.length > 0) {
+      State._modalCallbacks.pop();
+    }
+    // ⚠️ حدّث _modalCallback للقيمة الجديدة
+    if (State._modalCallbacks && State._modalCallbacks.length > 0) {
+      State._modalCallback = State._modalCallbacks[State._modalCallbacks.length - 1];
+    } else {
+      State._modalCallback = null;
+    }
+
     const remaining = document.querySelectorAll('.modal-overlay');
     if (remaining.length === 0) {
-      State._modalCallback = null;
       try { if (typeof Scanner !== 'undefined' && Scanner.stop) Scanner.stop(); } catch (e) {}
     }
   },
@@ -477,6 +494,7 @@ const Modal = {
     try {
       document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
       State._modalCallback = null;
+      State._modalCallbacks = [];
       if (typeof Scanner !== 'undefined' && Scanner.stop) Scanner.stop();
     } catch (e) {}
   },
@@ -3912,25 +3930,24 @@ const Sales = {
   },
 
   updateQty(i, v) {
-    const qty = parseInt(v) || 1;
-    if (qty > saleItems[i].max) {
-      Toast.show('⚠️ الحد ' + saleItems[i].max, 'error');
-      saleItems[i].quantity = saleItems[i].max;
-    } else if (qty < 1) saleItems[i].quantity = 1;
-    else saleItems[i].quantity = qty;
-    Sales.calcTotals();
-  },
+  const qty = parseInt(v) || 1;
+  if (qty > saleItems[i].max) {
+    Toast.show('⚠️ الحد ' + saleItems[i].max, 'error');
+    saleItems[i].quantity = saleItems[i].max;
+  } else if (qty < 1) saleItems[i].quantity = 1;
+  else saleItems[i].quantity = qty;
+  Sales.render();
+},
 
-  updatePrice(i, v) {
-    saleItems[i].price = parseFloat(v) || 0;
-    Sales.calcTotals();
-  },
+updatePrice(i, v) {
+  saleItems[i].price = parseFloat(v) || 0;
+  Sales.render();
+},
 
-  removeItem(i) {
-    saleItems.splice(i, 1);
-    Sales.render();
-    Sales.calcTotals();
-  },
+removeItem(i) {
+  saleItems.splice(i, 1);
+  Sales.render();
+},
 
   calcTotals() {
     const subEl = document.getElementById('saleSubtotal');
@@ -4136,21 +4153,20 @@ const Purchases = {
   },
 
   updateQty(i, v) {
-    const qty = parseInt(v) || 1;
-    purItems[i].quantity = qty < 1 ? 1 : qty;
-    Purchases.calcTotals();
-  },
+  const qty = parseInt(v) || 1;
+  purItems[i].quantity = qty < 1 ? 1 : qty;
+  Purchases.render();
+},
 
-  updatePrice(i, v) {
-    purItems[i].price = parseFloat(v) || 0;
-    Purchases.calcTotals();
-  },
+updatePrice(i, v) {
+  purItems[i].price = parseFloat(v) || 0;
+  Purchases.render();
+},
 
-  removeItem(i) {
-    purItems.splice(i, 1);
-    Purchases.render();
-    Purchases.calcTotals();
-  },
+removeItem(i) {
+  purItems.splice(i, 1);
+  Purchases.render();
+},
 
   calcTotals() {
     const subEl = document.getElementById('purSubtotal');
