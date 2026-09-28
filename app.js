@@ -3560,8 +3560,21 @@ const Products = {
     el.innerHTML = html;
   },
 
-  search: Utils.debounce(function () { Products.render(); }, 250),
-
+  search: function (term) {
+  // ⚠️ لو فيه term، حدّث الحقل
+  if (typeof term === 'string' && term.length > 0) {
+    const el = document.getElementById('prodSearch');
+    if (el) el.value = term;
+  }
+  // ⚠️ أعد الرسم (مع debounce)
+  if (!Products._searchDebounced) {
+    Products._searchDebounced = Utils.debounce(function () {
+      Products.render();
+    }, 250);
+  }
+  Products._searchDebounced();
+},
+   
   async edit(id) {
     if (id && !requirePermission('products_edit', 'تعديل')) return;
     if (!id && !requirePermission('products_add', 'إضافة')) return;
