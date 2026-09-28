@@ -471,8 +471,13 @@ const Modal = {
       if (existing) existing.remove();
       State._modalCallback = onSave || null;
     } else {
-      // modal فوق modal → نحفظ الـ callback الجديد
-      State._modalCallback = onSave || null;
+      // ⚠️ modal فوق modal
+      // لو الكاميرا/المسح بياخدوا onSave (نادراً)، حدّث
+      // لكن لو مش بياخدوا، خلي _modalCallback زي ما هو (بتاع المودال تحته)
+      if (onSave) {
+        State._modalCallback = onSave;
+      }
+      // مفيش else — نسيب الـ callback القديم
     }
     const html =
       '<div class="modal-overlay"' + (allowStack ? '' : ' onclick="if(event.target===this)Modal.close()"') + '>' +
