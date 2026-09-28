@@ -2139,7 +2139,7 @@ const App = {
   init() {
     State.deviceId = localStorage.getItem('device_id');
     if (!State.deviceId) {
-      State.deviceId = 'DEV-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 6);
+      State.deviceId = 'DEV-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 8)
       localStorage.setItem('device_id', State.deviceId);
     }
 
