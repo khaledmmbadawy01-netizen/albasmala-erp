@@ -2214,81 +2214,86 @@ const App = {
   },
 
   async loadCompanyData() {
-    try {
-      const companyId = State.currentCompanyId || localStorage.getItem('company_id');
-      if (!companyId) return App.showScreen('screenWelcome');
-      State.currentCompanyId = companyId;
-      State.companyRef = FBDB.ref('companies/' + companyId);
+  try {
+    const companyId = State.currentCompanyId || localStorage.getItem('company_id');
+    if (!companyId) {
+      return App.showScreen('screenWelcome');
+    }
+    State.currentCompanyId = companyId;
+    State.companyRef = FBDB.ref('companies/' + companyId);
 
-      const infoSnap = await State.companyRef.child('info').once('value');
-      if (!infoSnap.exists()) {
-        Toast.show('الشركة غير موجودة', 'error');
-        return Auth.logout();
-      }
-      const companyInfo = infoSnap.val();
-      State.currentCompanyName = companyInfo.name || 'شركة';
+    const infoSnap = await State.companyRef.child('info').once('value');
+    if (!infoSnap.exists()) {
+      Toast.show('الشركة غير موجودة', 'error');
+      return await App.safeLogout('company_not_found');
+    }
+    const companyInfo = infoSnap.val();
+    State.currentCompanyName = companyInfo.name || 'شركة';
 
-      const uid = State.currentUser.uid;
-      const empSnap = await State.companyRef.child('employees/' + uid).once('value');
-      if (!empSnap.exists()) {
-        const reqSnap = await State.companyRef.child('pending_requests/' + uid).once('value');
-        if (reqSnap.exists() && reqSnap.val().status === 'pending') {
-          App.showScreen('screenPendingApproval');
-          Auth.watchApproval(uid);
-          return;
-        }
-        Toast.show('لا يمكن الوصول لهذه الشركة', 'error');
-        return Auth.logout();
-      }
-      State.currentEmployee = empSnap.val();
-      if (State.currentEmployee.active !== true) {
+    const uid = State.currentUser.uid;
+    const empSnap = await State.companyRef.child('employees/' + uid).once('value');
+    if (!empSnap.exists()) {
+      const reqSnap = await State.companyRef.child('pending_requests/' + uid).once('value');
+      if (reqSnap.exists() && reqSnap.val().status === 'pending') {
         App.showScreen('screenPendingApproval');
         Auth.watchApproval(uid);
         return;
       }
-
-      try {
-        await State.companyRef.child('devices/' + State.deviceId).update({
-          last_seen: Utils.nowISO(), user_uid: uid,
-          user_name: State.currentEmployee.name, approved: true, status: 'approved'
-        });
-      } catch (e) {}
-
-      document.querySelectorAll('.auth-screen').forEach(function (s) { s.classList.add('hidden'); });
-      const mainApp = document.getElementById('mainApp');
-      if (mainApp) mainApp.classList.remove('hidden');
-
-      const titleEl = document.getElementById('appTitle');
-      if (titleEl) titleEl.textContent = '🏪 ' + State.currentCompanyName;
-
-      const userEl = document.getElementById('userInfo');
-      if (userEl) {
-        userEl.textContent = State.currentEmployee.name + ' - ' +
-          (PERMISSIONS[State.currentEmployee.role] ? PERMISSIONS[State.currentEmployee.role].label : State.currentEmployee.role);
-      }
-
-      const compEl = document.getElementById('companyInfo');
-      if (compEl) compEl.textContent = 'معرّف الشركة: ' + State.currentCompanyId;
-
-      const devEl = document.getElementById('deviceLabel');
-      if (devEl) devEl.textContent = '📱 ' + State.deviceId.substr(-6);
-
-      const adminTools = document.getElementById('adminTools');
-      if (adminTools) adminTools.style.display = can('data_clear') ? 'block' : 'none';
-
-      App.startDataListeners();
-      await App.loadCacheFromLocal();
-      Menu.render();
-      App.openPage('home');
-      Sync.updateBar();
-      await Activity.log('login', 'دخول: ' + State.currentEmployee.name);
-      App.watchDeviceApproval();
-      App.watchEmployeeStatus();
-    } catch (e) {
-      console.error('loadCompanyData:', e);
-      Toast.show('خطأ: ' + e.message, 'error');
+      Toast.show('لا يمكن الوصول لهذه الشركة', 'error');
+      return await App.safeLogout('no_access');
     }
-  },
+    State.currentEmployee = empSnap.val();
+    if (State.currentEmployee.active !== true) {
+      App.showScreen('screenPendingApproval');
+      Auth.watchApproval(uid);
+      return;
+    }
+
+    try {
+      await State.companyRef.child('devices/' + State.deviceId).update({
+        last_seen: Utils.nowISO(), user_uid: uid,
+        user_name: State.currentEmployee.name, approved: true, status: 'approved'
+      });
+    } catch (e) { console.warn('device update (non-critical):', e); }
+
+    document.querySelectorAll('.auth-screen').forEach(function (s) { s.classList.add('hidden'); });
+    const mainApp = document.getElementById('mainApp');
+    if (mainApp) mainApp.classList.remove('hidden');
+
+    const titleEl = document.getElementById('appTitle');
+    if (titleEl) titleEl.textContent = '🏪 ' + State.currentCompanyName;
+
+    const userEl = document.getElementById('userInfo');
+    if (userEl) {
+      userEl.textContent = State.currentEmployee.name + ' - ' +
+        (PERMISSIONS[State.currentEmployee.role] ? PERMISSIONS[State.currentEmployee.role].label : State.currentEmployee.role);
+    }
+
+    const compEl = document.getElementById('companyInfo');
+    if (compEl) compEl.textContent = 'معرّف الشركة: ' + State.currentCompanyId;
+
+    const devEl = document.getElementById('deviceLabel');
+    if (devEl) devEl.textContent = '📱 ' + State.deviceId.substr(-6);
+
+    const adminTools = document.getElementById('adminTools');
+    if (adminTools) adminTools.style.display = can('data_clear') ? 'block' : 'none';
+
+    App.startDataListeners();
+    await App.loadCacheFromLocal();
+    Menu.render();
+    App.openPage('home');
+    Sync.updateBar();
+    await Activity.log('login', 'دخول: ' + State.currentEmployee.name);
+    App.watchDeviceApproval();
+    App.watchEmployeeStatus();
+  } catch (e) {
+    console.error('❌ loadCompanyData fatal error:', e);
+    Toast.show('خطأ في تحميل البيانات: ' + (e.message || 'غير معروف'), 'error');
+    setTimeout(function () {
+      App.safeLogout('load_error');
+    }, 2000);
+  }
+},
 
   // ⚠️ الحل الجذري: دمج Firebase مع cache المحلي
   startDataListeners() {
