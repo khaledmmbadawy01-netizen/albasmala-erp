@@ -2100,35 +2100,15 @@ const Auth = {
   },
 
   async logout() {
-    try {
-      if (State.currentEmployee && !confirm('تسجيل الخروج؟')) return;
-      try {
-        if (State.currentEmployee) await Activity.log('logout', 'خروج: ' + State.currentEmployee.name);
-      } catch (e) {}
-      try { App.stopAllListeners(); } catch (e) {}
-      try { LocationService.stopWatching(); } catch (e) {}
-      try { if (typeof CameraHelper !== 'undefined') CameraHelper._cleanup(); } catch (e) {}
-      try { if (typeof Scanner !== 'undefined' && Scanner.stop) await Scanner.stop(); } catch (e) {}
-      try {
-        if (FBDB && State.deviceId && State.currentCompanyId) {
-          await FBDB.ref('companies/' + State.currentCompanyId + '/devices/' + State.deviceId).update({ last_seen: Utils.nowISO() });
-        }
-      } catch (e) {}
-      try { await FBAuth.signOut(); } catch (e) {}
-      State.currentUser = null;
-      State.currentEmployee = null;
-      const mainApp = document.getElementById('mainApp');
-      if (mainApp) mainApp.classList.add('hidden');
-      try { document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); }); } catch (e) {}
-      App.showScreen('screenWelcome');
-    } catch (e) {
-      console.error('logout error:', e);
-      try {
-        const mainApp = document.getElementById('mainApp');
-        if (mainApp) mainApp.classList.add('hidden');
-        App.showScreen('screenWelcome');
-      } catch (e2) {}
+  if (State.currentEmployee && !confirm('تسجيل الخروج؟')) return;
+
+  try {
+    if (State.currentEmployee && State.companyRef) {
+      await Activity.log('logout', 'خروج: ' + State.currentEmployee.name);
     }
+  } catch (e) { console.warn('Activity log on logout:', e); }
+
+  await App.safeLogout('user_logout');
   }
 };
 
