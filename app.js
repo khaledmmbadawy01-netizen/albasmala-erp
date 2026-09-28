@@ -2467,17 +2467,55 @@ const App = {
       'pending_requests', 'geofences', 'attendance_photos', 'hr_records'
     ];
     for (const key of dataKeys) {
-      (function (k) {
-        const ref = State.companyRef.child(k);
-        const callback = function (snap) {
-          const val = snap.val();
-          cache[k] = val ? Object.values(val) : [];
-          App.saveCacheToLocal(k, cache[k]);
-          App.refreshCurrentPage();
-        };
-        ref.on('value', callback);
-        State.listeners.push({ ref: ref, callback: callback });
-      })(key);
+  (function (k) {
+    const ref = State.companyRef.child(k);
+    const callback = function (snap) {
+      const val = snap.val();
+      const serverData = val ? Object.values(val) : [];
+
+      // ⚠️ دمج: Firebase هو المرجع، لكن لو فيه عناصر محفوظة محلياً ولسه ما وصلتش، نسيبه
+      const merged = {};
+
+      // 1. العناصر من Firebase
+      serverData.forEach(function (item) {
+        if (item && item.id) merged[item.id] = item;
+      });
+
+      // 2. العناصر المحفوظة محلياً (اللي لسه ما اترفعتش)
+      try {
+        const pendingKey = 'pending_changes_' + State.currentCompanyId;
+        const pending = JSON.parse(localStorage.getItem(pendingKey) || '[]');
+        pending.forEach(function (p) {
+          if (p.store === k && p.data && p.data.id && !merged[p.data.id]) {
+            merged[p.data.id] = p.data;
+          }
+        });
+      } catch (e) {}
+
+      // 3. العناصر من offline_data
+      try {
+        const offlineKey = 'offline_data_' + State.currentCompanyId + '_' + k;
+        const offline = JSON.parse(localStorage.getItem(offlineKey) || '{}');
+        for (const id in offline) {
+          if (offline[id] && offline[id].id && !merged[offline[id].id]) {
+            merged[offline[id].id] = offline[id];
+          }
+        }
+      } catch (e) {}
+
+      // 4. لو Firebase رجع فاضي تماماً، سيب الـ cache القديم
+      if (serverData.length === 0 && cache[k] && cache[k].length > 0) {
+        App.refreshCurrentPage();
+        return;
+      }
+
+      cache[k] = Object.values(merged);
+      App.saveCacheToLocal(k, cache[k]);
+      App.refreshCurrentPage();
+    };
+    ref.on('value', callback);
+    State.listeners.push({ ref: ref, callback: callback });
+  })(key);
     }
   },
   stopAllListeners() {
