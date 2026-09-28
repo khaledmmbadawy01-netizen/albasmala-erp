@@ -3993,41 +3993,90 @@ const Sales = {
   },
 
   render() {
-    const body = document.getElementById('saleItemsBody');
-    if (!body) return;
-    if (saleItems.length === 0) {
-      body.innerHTML = '<tr><td colspan="5" style="padding:20px;color:#666;">لا توجد أصناف</td></tr>';
-    } else {
-      body.innerHTML = saleItems.map(function (it, i) {
-        const over = it.quantity > it.max;
-        const imgHtml = it.image
-          ? '<img src="' + it.image + '" style="width:30px;height:30px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-left:4px;">'
-          : '';
-        return '<tr style="' + (over ? 'background:rgba(198,40,40,.15);' : '') + '">' +
-          '<td>' + imgHtml + Utils.esc(it.name) + '<br><small style="color:#888;font-size:10px;">رصيد: ' + it.max + '</small></td>' +
-          '<td><input type="number" value="' + it.quantity + '" min="1" max="' + it.max + '" onchange="Sales.updateQty(' + i + ',this.value)" oninput="Sales.updateQty(' + i + ',this.value)"></td>' +
-          '<td><input type="number" value="' + it.price + '" onchange="Sales.updatePrice(' + i + ',this.value)" oninput="Sales.updatePrice(' + i + ',this.value)"></td>' +
-          '<td>' + (it.quantity * it.price).toFixed(2) + '</td>' +
-          '<td><button class="btn btn-danger btn-sm" onclick="Sales.removeItem(' + i + ')">×</button></td>' +
-        '</tr>';
-      }).join('');
-    }
+  const body = document.getElementById('saleItemsBody');
+  if (!body) return;
+  if (saleItems.length === 0) {
+    body.innerHTML = '<tr><td colspan="5" style="padding:20px;color:#666;">لا توجد أصناف</td></tr>';
     Sales.calcTotals();
-  },
+    return;
+  }
 
-  updateQty(i, v) {
-  const qty = parseInt(v) || 1;
-  if (qty > saleItems[i].max) {
-    Toast.show('⚠️ الحد ' + saleItems[i].max, 'error');
-    saleItems[i].quantity = saleItems[i].max;
-  } else if (qty < 1) saleItems[i].quantity = 1;
-  else saleItems[i].quantity = qty;
-  Sales.render();
+  let html = '';
+  for (let i = 0; i < saleItems.length; i++) {
+    const it = saleItems[i];
+    const over = it.quantity > it.max;
+    const imgHtml = it.image
+      ? '<img src="' + it.image + '" style="width:30px;height:30px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-left:4px;">'
+      : '';
+    html += '<tr id="saleRow_' + i + '" style="' + (over ? 'background:rgba(198,40,40,.15);' : '') + '">' +
+      '<td>' + imgHtml + Utils.esc(it.name) + '<br><small style="color:#888;font-size:10px;">رصيد: ' + it.max + '</small></td>' +
+      '<td><input type="number" id="saleQty_' + i + '" value="' + it.quantity + '" min="1" max="' + it.max + '" ' +
+        'oninput="Sales.onQtyInput(' + i + ',this.value)" ' +
+        'onchange="Sales.onQtyChange(' + i + ',this.value)" ' +
+        'onblur="Sales.onQtyChange(' + i + ',this.value)"></td>' +
+      '<td><input type="number" id="salePrice_' + i + '" value="' + it.price + '" ' +
+        'oninput="Sales.onPriceInput(' + i + ',this.value)" ' +
+        'onchange="Sales.onPriceChange(' + i + ',this.value)" ' +
+        'onblur="Sales.onPriceChange(' + i + ',this.value)"></td>' +
+      '<td id="saleTotal_' + i + '">' + (it.quantity * it.price).toFixed(2) + '</td>' +
+      '<td><button class="btn btn-danger btn-sm" onclick="Sales.removeItem(' + i + ')">×</button></td>' +
+    '</tr>';
+  }
+  body.innerHTML = html;
+  Sales.calcTotals();
 },
 
-updatePrice(i, v) {
+onQtyInput(i, v) {
+  if (!saleItems[i]) return;
+  const qty = parseInt(v) || 0;
+  if (qty > saleItems[i].max) {
+    Toast.show('⚠️ الحد الأقصى ' + saleItems[i].max, 'error');
+    saleItems[i].quantity = saleItems[i].max;
+    const el = document.getElementById('saleQty_' + i);
+    if (el) el.value = saleItems[i].max;
+  } else if (qty < 1) {
+    saleItems[i].quantity = 1;
+  } else {
+    saleItems[i].quantity = qty;
+  }
+  const totalEl = document.getElementById('saleTotal_' + i);
+  if (totalEl) totalEl.textContent = (saleItems[i].quantity * saleItems[i].price).toFixed(2);
+  Sales.calcTotals();
+},
+
+onQtyChange(i, v) {
+  if (!saleItems[i]) return;
+  const qty = parseInt(v) || 1;
+  if (qty > saleItems[i].max) {
+    saleItems[i].quantity = saleItems[i].max;
+    const el = document.getElementById('saleQty_' + i);
+    if (el) el.value = saleItems[i].max;
+  } else if (qty < 1) {
+    saleItems[i].quantity = 1;
+    const el = document.getElementById('saleQty_' + i);
+    if (el) el.value = 1;
+  } else {
+    saleItems[i].quantity = qty;
+  }
+  const totalEl = document.getElementById('saleTotal_' + i);
+  if (totalEl) totalEl.textContent = (saleItems[i].quantity * saleItems[i].price).toFixed(2);
+  Sales.calcTotals();
+},
+
+onPriceInput(i, v) {
+  if (!saleItems[i]) return;
   saleItems[i].price = parseFloat(v) || 0;
-  Sales.render();
+  const totalEl = document.getElementById('saleTotal_' + i);
+  if (totalEl) totalEl.textContent = (saleItems[i].quantity * saleItems[i].price).toFixed(2);
+  Sales.calcTotals();
+},
+
+onPriceChange(i, v) {
+  if (!saleItems[i]) return;
+  saleItems[i].price = parseFloat(v) || 0;
+  const totalEl = document.getElementById('saleTotal_' + i);
+  if (totalEl) totalEl.textContent = (saleItems[i].quantity * saleItems[i].price).toFixed(2);
+  Sales.calcTotals();
 },
 
 removeItem(i) {
