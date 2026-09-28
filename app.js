@@ -3742,12 +3742,32 @@ State.editingProductImage = p.image || null;
         active: true,
         created_at: p.created_at || Utils.nowISO()
       };
-      await Sync.save('products', newId, data);
-      State.editingProductImage = null;
-      Modal.close();
-      Toast.show('تم الحفظ — كود: ' + finalCode);
-    });
-  },
+   await Sync.save('products', newId, data);
+
+    // ⚠️ حدّث cache فوراً عشان المنتج يظهر في القائمة
+    try {
+      const idx = (cache.products || []).findIndex(function (x) { return x.id === newId; });
+      if (idx >= 0) {
+        cache.products[idx] = data;  // تعديل
+      } else {
+        cache.products.push(data);   // إضافة جديدة
+      }
+      // ⚠️ أعد ترتيب القائمة (الأحدث أول)
+      cache.products.sort(function (a, b) {
+        return (b.created_at || '').localeCompare(a.created_at || '');
+      });
+    } catch (e) { console.warn('cache.products update:', e); }
+
+    // ⚠️ أعد عرض القائمة فوراً
+    try {
+      if (State.currentPage === 'products') Products.render();
+    } catch (e) {}
+
+    State.editingProductImage = null;
+    Modal.close();
+    Toast.show('تم الحفظ — كود: ' + finalCode);
+  });
+},
 
   generateAutoCode() {
     const products = cache.products || [];
