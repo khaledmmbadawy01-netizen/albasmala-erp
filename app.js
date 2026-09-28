@@ -3611,10 +3611,16 @@ const Products = {
     if (id && !requirePermission('products_edit', 'تعديل')) return;
     if (!id && !requirePermission('products_add', 'إضافة')) return;
     let p = { name: '', barcode: '', code: '', unit: 'قطعة', cost_price: 0, sale_price: 0, quantity: 0, min_quantity: 5, image: '', origin: 'الصين' };
-    if (id) p = (cache.products || []).find(function (x) { return x.id === id; }) || p;
+if (id) p = (cache.products || []).find(function (x) { return x.id === id; }) || p;
 
-    // ⚠️ تهيئة صورة المنتج في State
-    State.editingProductImage = p.image || null;
+// ⚠️ لو فيه باركود اتسكان ومحفوظ مؤقتاً، استخدمه
+if (State._scannedBarcode) {
+  p.barcode = State._scannedBarcode;
+  State._scannedBarcode = null;
+}
+
+// ⚠️ تهيئة صورة المنتج في State
+State.editingProductImage = p.image || null;
 
     // ⚠️ توليد الكود التلقائي للمنتج الجديد
     let autoCode = p.code || '';
