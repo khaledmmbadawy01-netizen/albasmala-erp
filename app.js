@@ -2116,6 +2116,8 @@ const Auth = {
    19. App (Main Controller)
    ═══════════════════════════════════════════════════════════════════ */
 const App = {
+  _loadingCompany: false,
+
   init() {
     State.deviceId = localStorage.getItem('device_id');
     if (!State.deviceId) {
