@@ -1863,7 +1863,6 @@ toExcel(doc, items, docType) {
       // فواتير بيع / شراء / مرتجعات
       rows.push(['م', 'الصنف', 'الكمية', 'السعر', 'الإجمالي']);
 
-      // ⚠️ التأكد إن items موجودة
       const safeItems = Array.isArray(items) ? items : [];
 
       if (safeItems.length === 0) {
@@ -1907,11 +1906,11 @@ toExcel(doc, items, docType) {
 
     // ⚠️ ضبط عرض الأعمدة
     ws['!cols'] = [
-      { wch: 8 },   // م
-      { wch: 30 },  // الصنف
-      { wch: 12 },  // الكمية
-      { wch: 12 },  // السعر
-      { wch: 15 }   // الإجمالي
+      { wch: 8 },
+      { wch: 30 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 15 }
     ];
 
     // ⚠️ إنشاء الـ Workbook
@@ -1988,7 +1987,7 @@ toCSV(doc, items, docType) {
 
 // ⚠️ حفظ أي ملف (HTML / PDF / Excel / صورة) على جهاز المستخدم
 async saveFile(doc, items, docType, format) {
-  format = format || 'html'; // html | pdf | excel | txt | json
+  format = format || 'html';
 
   try {
     const docNo = doc.invoice_no || doc.return_no || doc.voucher_no ||
@@ -1996,7 +1995,6 @@ async saveFile(doc, items, docType, format) {
     const safeName = String(docNo).replace(/[^A-Za-z0-9\-_]/g, '_');
     const baseName = 'albasmala_' + docType + '_' + safeName;
 
-    // ⚠️ HTML → حفظ كملف HTML
     if (format === 'html') {
       const html = Export.generateHTML(doc, items, docType);
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
@@ -2006,7 +2004,6 @@ async saveFile(doc, items, docType, format) {
       return true;
     }
 
-    // ⚠️ PDF → استخدام html2pdf
     if (format === 'pdf') {
       if (typeof html2pdf === 'undefined') {
         Toast.show('⚠️ مكتبة PDF غير محمّلة — سيتم استخدام HTML', 'info');
@@ -2015,12 +2012,10 @@ async saveFile(doc, items, docType, format) {
       return Export.toPDF(doc, items, docType);
     }
 
-    // ⚠️ Excel → استخدام xlsx
     if (format === 'excel') {
       return Export.toExcel(doc, items, docType);
     }
 
-    // ⚠️ TXT → حفظ كنص عادي
     if (format === 'txt') {
       const text = Export.generateText(doc, items, docType);
       const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -2030,7 +2025,6 @@ async saveFile(doc, items, docType, format) {
       return true;
     }
 
-    // ⚠️ JSON → حفظ كـ JSON
     if (format === 'json') {
       const data = {
         doc: doc,
@@ -2047,7 +2041,6 @@ async saveFile(doc, items, docType, format) {
       return true;
     }
 
-    // ⚠️ Fallback
     Toast.show('⚠️ صيغة غير مدعومة: ' + format, 'error');
     return false;
 
@@ -2058,7 +2051,6 @@ async saveFile(doc, items, docType, format) {
   }
 },
 
-// ⚠️ دالة مساعدة لتحميل Blob
 downloadBlob(blob, filename) {
   try {
     const url = URL.createObjectURL(blob);
@@ -2078,7 +2070,6 @@ downloadBlob(blob, filename) {
   }
 },
 
-// ⚠️ دالة مساعدة لتوليد نص عادي (TXT)
 generateText(doc, items, docType) {
   const titles = {
     sales: 'فاتورة مبيعات', purchase: 'فاتورة مشتريات',
@@ -2141,12 +2132,12 @@ generateText(doc, items, docType) {
   return text;
 },
 
-  async printDirect(doc, items, docType, method) {
-    const html = Export.generateHTML(doc, items, docType);
-    method = method || 'dialog';
-    if (method === 'bluetooth') return Export.printBluetooth(html);
-    return Export.printHTML(html, 'dialog');
-  },
+async printDirect(doc, items, docType, method) {
+  const html = Export.generateHTML(doc, items, docType);
+  method = method || 'dialog';
+  if (method === 'bluetooth') return Export.printBluetooth(html);
+  return Export.printHTML(html, 'dialog');
+},
 
   async printHTML(html, method) {
     if (window.cordova && window.cordova.plugins && window.cordova.plugins.printer) {
