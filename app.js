@@ -1719,20 +1719,20 @@ async toPDF(doc, items, docType) {
     // ⚠️ توليد HTML كامل
     const fullHtml = Export.generateHTML(doc, items, docType);
 
-    // ⚠️ استخراج body content فقط (شيل DOCTYPE و head)
+    // ⚠️ استخراج body content فقط
     let bodyContent = fullHtml;
     const bodyMatch = fullHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
     if (bodyMatch && bodyMatch[1]) {
       bodyContent = bodyMatch[1];
     }
 
-    // ⚠️ إنشاء حاوية حقيقية في الـ DOM (مخفية بعيد عن الشاشة لكن موجودة)
+    // ⚠️ إنشاء حاوية حقيقية في الـ DOM
     container = document.createElement('div');
     container.id = 'pdf-temp-container';
     container.style.position = 'fixed';
     container.style.top = '0';
     container.style.left = '0';
-    container.style.width = '302px';        // 80mm
+    container.style.width = '302px';
     container.style.minHeight = '100px';
     container.style.background = '#ffffff';
     container.style.color = '#000000';
@@ -1748,41 +1748,47 @@ async toPDF(doc, items, docType) {
 
     document.body.appendChild(container);
 
-    // ⚠️ انتظار رسم المحتوى (خصوصاً الصور)
+    // ⚠️ انتظار تحميل الخطوط والصور
     await new Promise(function (resolve) {
-      // انتظر تحميل كل الصور لو فيه
-      const images = container.querySelectorAll('img');
-      if (images.length === 0) {
-        setTimeout(resolve, 300);
-        return;
+      // انتظر تحميل الخطوط
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(function () {
+          // بعد الخطوط، انتظر الصور
+          const images = container.querySelectorAll('img');
+          if (images.length === 0) {
+            setTimeout(resolve, 400);
+            return;
+          }
+          let loaded = 0;
+          let resolved = false;
+          const done = function () {
+            if (resolved) return;
+            resolved = true;
+            resolve();
+          };
+          images.forEach(function (img) {
+            if (img.complete) {
+              loaded++;
+              if (loaded >= images.length) done();
+            } else {
+              img.onload = function () {
+                loaded++;
+                if (loaded >= images.length) done();
+              };
+              img.onerror = function () {
+                loaded++;
+                if (loaded >= images.length) done();
+              };
+            }
+          });
+          setTimeout(done, 2500);
+        });
+      } else {
+        setTimeout(resolve, 600);
       }
-      let loaded = 0;
-      let resolved = false;
-      const done = function () {
-        if (resolved) return;
-        resolved = true;
-        resolve();
-      };
-      images.forEach(function (img) {
-        if (img.complete) {
-          loaded++;
-          if (loaded >= images.length) done();
-        } else {
-          img.onload = function () {
-            loaded++;
-            if (loaded >= images.length) done();
-          };
-          img.onerror = function () {
-            loaded++;
-            if (loaded >= images.length) done();
-          };
-        }
-      });
-      // Timeout احتياطي
-      setTimeout(done, 2000);
     });
 
-    // ⚠️ إعدادات PDF
+    // ⚠️ استخدام html2pdf
     const options = {
       margin: [3, 3, 3, 3],
       filename: filename,
@@ -1796,7 +1802,16 @@ async toPDF(doc, items, docType) {
         scrollX: 0,
         scrollY: 0,
         width: 302,
-        windowWidth: 302
+        windowWidth: 302,
+        onclone: function (clonedDoc) {
+          // ⚠️ تأكد إن الخط موجود في النسخة المستنسخة
+          const clonedContainer = clonedDoc.getElementById('pdf-temp-container');
+          if (clonedContainer) {
+            clonedContainer.style.opacity = '1';
+            clonedContainer.style.zIndex = '1';
+            clonedContainer.style.position = 'static';
+          }
+        }
       },
       jsPDF: {
         unit: 'mm',
@@ -1806,7 +1821,6 @@ async toPDF(doc, items, docType) {
       pagebreak: { mode: ['css', 'legacy'] }
     };
 
-    // ⚠️ توليد PDF
     await html2pdf().set(options).from(container).save();
 
     Toast.show('✅ تم إنشاء PDF: ' + filename);
@@ -1820,7 +1834,6 @@ async toPDF(doc, items, docType) {
     return Export.printHTML(html, 'dialog');
 
   } finally {
-    // ⚠️ تنظيف الحاوية دايماً — حتى لو حصل خطأ
     if (container && container.parentNode) {
       try {
         container.parentNode.removeChild(container);
@@ -5599,12 +5612,69 @@ const Invoices = {
   },
 
   openExport(id, type) {
-    const storeMap = { sales: 'sales_invoices', purchase: 'purchase_invoices', sales_return: 'sales_returns', purchase_return: 'purchase_returns' };
-    const itemsMap = { sales: 'sales_items', purchase: 'purchase_items', sales_return: 'sales_return_items', purchase_return: 'purchase_return_items' };
-    const doc = (cache[storeMap[type]] || []).find(function (x) { return x.id === id; });
-    const items = (cache[itemsMap[type]] || []).filter(function (i) { return (i.invoice_id === id || i.return_id === id); });
-    Export.openDialog(type, doc, items);
-  },
+  const storeMap = { sales: 'sales_invoices', purchase: 'purchase_invoices', sales_return: 'sales_returns', purchase_return: 'purchase_returns' };
+  const itemsMap = { sales: 'sales_items', purchase: 'purchase_items', sales_return: 'sales_return_items', purchase_return: 'purchase_return_items' };
+
+  const store = storeMap[type];
+  const itemsStore = itemsMap[type];
+
+  if (!store) {
+    Toast.show('❌ نوع المستند غير معروف: ' + type, 'error');
+    return;
+  }
+
+  // ⚠️ جلب المستند
+  const doc = (cache[store] || []).find(function (x) { return x.id === id; });
+  if (!doc) {
+    Toast.show('❌ المستند غير موجود في cache[' + store + ']', 'error');
+    console.warn('openExport: doc not found', { id, type, store, cacheSize: (cache[store] || []).length });
+    return;
+  }
+
+  // ⚠️ جلب الأصناف
+  const items = (cache[itemsStore] || []).filter(function (i) {
+    return (i.invoice_id === id || i.return_id === id);
+  });
+
+  // ⚠️ لو مفيش أصناف، نحاول نجيبهم من Firebase مباشرة
+  if (items.length === 0) {
+    console.warn('openExport: no items found in cache, fetching from Firebase...');
+    Toast.show('⏳ جاري جلب الأصناف...', 'info');
+
+    State.companyRef.child(itemsStore).orderByChild('invoice_id').equalTo(id).once('value')
+      .then(function (snap) {
+        const val = snap.val();
+        const fbItems = val ? Object.values(val) : [];
+
+        if (fbItems.length === 0) {
+          Toast.show('⚠️ لا توجد أصناف لهذه الفاتورة', 'error');
+          return;
+        }
+
+        // ⚠️ حدّث cache
+        if (!cache[itemsStore]) cache[itemsStore] = [];
+        fbItems.forEach(function (item) {
+          if (item && item.id) {
+            const idx = cache[itemsStore].findIndex(function (x) { return x.id === item.id; });
+            if (idx >= 0) cache[itemsStore][idx] = item;
+            else cache[itemsStore].push(item);
+          }
+        });
+
+        // ⚠️ افتح الـ dialog
+        Export.openDialog(type, doc, fbItems);
+      })
+      .catch(function (err) {
+        console.error('Firebase fetch failed:', err);
+        Toast.show('❌ فشل جلب الأصناف', 'error');
+      });
+
+    return;
+  }
+
+  // ⚠️ لو فيه أصناف في cache، افتح مباشرة
+  Export.openDialog(type, doc, items);
+},
 
   async print(id, type) {
     const storeMap = { sales: 'sales_invoices', purchase: 'purchase_invoices', sales_return: 'sales_returns', purchase_return: 'purchase_returns' };
