@@ -1697,10 +1697,88 @@ const Export = {
   },
 
   async toPDF(doc, items, docType) {
-    const html = Export.generateHTML(doc, items, docType);
-    Toast.show('⏳ جاري تجهيز PDF...', 'info');
-    await Export.printHTML(html, 'dialog');
-  },
+  const html = Export.generateHTML(doc, items, docType);
+
+  Toast.show('⏳ جاري تجهيز PDF...', 'info');
+
+  // ⚠️ لو المكتبة مش موجودة، نرجع للطريقة القديمة
+  if (typeof html2pdf === 'undefined') {
+    console.warn('html2pdf.js not loaded, falling back to print dialog');
+    Toast.show('⚠️ مكتبة PDF غير محمّلة — استخدام الطباعة', 'info');
+    return Export.printHTML(html, 'dialog');
+  }
+
+  try {
+    // ⚠️ اسم الملف
+    const docNo = doc.invoice_no || doc.return_no || doc.voucher_no ||
+                  ('PAY-' + (doc.month || '')) || 'document';
+    const safeName = String(docNo).replace(/[^A-Za-z0-9\-_]/g, '_');
+    const filename = 'albasmala_' + docType + '_' + safeName + '.pdf';
+
+    // ⚠️ إنشاء عنصر مؤقت في DOM
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+
+    // ⚠️ استخراج الـ body content فقط
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    if (bodyMatch && bodyMatch[1]) {
+      tempDiv.innerHTML = bodyMatch[1];
+    }
+
+    // ⚠️ نسخة من الحاوية على الشاشة (مخفية لكن قابلة للطباعة)
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.left = '-9999px';
+    container.style.top = '0';
+    container.style.width = '80mm';
+    container.style.background = '#fff';
+    container.style.color = '#000';
+    container.style.padding = '4mm';
+    container.style.fontFamily = 'Cairo, Tahoma, sans-serif';
+    container.style.fontSize = '11px';
+    container.style.direction = 'rtl';
+    container.appendChild(tempDiv);
+
+    document.body.appendChild(container);
+
+    // ⚠️ إعدادات PDF
+    const options = {
+      margin: [3, 3, 3, 3],
+      filename: filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false
+      },
+      jsPDF: {
+        unit: 'mm',
+        format: [80, 297],
+        orientation: 'portrait'
+      },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    };
+
+    // ⚠️ توليد PDF
+    await html2pdf().set(options).from(container).save();
+
+    // ⚠️ تنظيف
+    setTimeout(function () {
+      try { document.body.removeChild(container); } catch (e) {}
+    }, 1000);
+
+    Toast.show('✅ تم إنشاء ملف PDF: ' + filename);
+    Utils.vibrate(80);
+
+  } catch (e) {
+    console.error('PDF generation failed:', e);
+    Toast.show('⚠️ فشل توليد PDF — استخدام الطباعة', 'error');
+    // ⚠️ الرجوع للطريقة القديمة
+    return Export.printHTML(html, 'dialog');
+  }
+},
 
   toExcel(doc, items, docType) {
     const titles = {
