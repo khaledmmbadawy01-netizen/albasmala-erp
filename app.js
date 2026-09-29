@@ -2406,36 +2406,37 @@ const App = {
   },
 
   refreshCurrentPage() {
-    if (!State.currentEmployee) return;
-    try {
-      const page = State.currentPage;
-      const safe = function (name, fn) {
-        try { if (typeof fn === 'function') fn(); }
-        catch (e) { console.warn('refresh[' + name + '] error:', e); }
-      };
+  if (!State.currentEmployee) return;
 
-      if (page === 'home') safe('Dashboard', Dashboard.render);
-      else if (page === 'attendance') safe('Attendance', Attendance.renderMark);
-      else if (page === 'employees') safe('Employees', Employees.render);
-      else if (page === 'hr') safe('HR', HR.render);
-      else if (page === 'products') safe('Products', Products.render);
-      else if (page === 'partners') safe('Partners', Partners.render);
-      else if (page === 'invoices') safe('Invoices', Invoices.render);
-      else if (page === 'vouchers') safe('Vouchers', Vouchers.render);
-      else if (page === 'cash') safe('Cash', Cash.render);
-      else if (page === 'payroll') safe('Payroll', Payroll.render);
-      else if (page === 'expenses') safe('Expenses', Expenses.render);
-      else if (page === 'policies') safe('Policies', Policies.render);
-      else if (page === 'whatsapp') safe('WhatsApp', WhatsApp.render);
-      else if (page === 'activity') safe('Activity', Activity.render);
-      else if (page === 'devices') safe('Devices', Devices.render);
-      else if (page === 'requests') safe('Requests', Requests.render);
-      else if (page === 'geofence') safe('Geofence', Geofence.render);
+  try {
+    const page = State.currentPage;
+    const safe = function (name, fn) {
+      try { if (typeof fn === 'function') fn(); }
+      catch (e) { console.warn('refresh[' + name + '] error:', e); }
+    };
 
-      safe('Menu', Menu.updateRequestsBadge);
-    } catch (e) { console.warn('refresh outer:', e); }
-  },
+    if (page === 'home') safe('Dashboard', Dashboard.render);
+    else if (page === 'attendance') safe('Attendance', Attendance.renderMark);
+    else if (page === 'employees') safe('Employees', Employees.render);
+    else if (page === 'hr') safe('HR', HR.render);
+    else if (page === 'products') safe('Products', Products.render);
+    else if (page === 'partners') safe('Partners', Partners.render);
+    else if (page === 'invoices') safe('Invoices', Invoices.render);
+    else if (page === 'vouchers') safe('Vouchers', Vouchers.render);
+    else if (page === 'cash') safe('Cash', Cash.render);
+    else if (page === 'payroll') safe('Payroll', Payroll.render);
+    else if (page === 'expenses') safe('Expenses', Expenses.render);
+    else if (page === 'policies') safe('Policies', Policies.render);
+    else if (page === 'whatsapp') safe('WhatsApp', WhatsApp.render);
+    else if (page === 'activity') safe('Activity', Activity.render);
+    else if (page === 'devices') safe('Devices', Devices.render);
+    else if (page === 'requests') safe('Requests', Requests.render);
+    else if (page === 'geofence') safe('Geofence', Geofence.render);
 
+    safe('Menu', Menu.updateRequestsBadge);
+  } catch (e) { console.warn('refresh outer:', e); }
+},
+  
   saveCacheToLocal(key, data) {
     try { localStorage.setItem('cache_' + State.currentCompanyId + '_' + key, JSON.stringify(data)); } catch (e) {}
   },
