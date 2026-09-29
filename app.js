@@ -5800,59 +5800,171 @@ const Reports = {
   },
 
   loadProfit() {
-    const fromEl = document.getElementById('profFrom');
-    const toEl = document.getElementById('profTo');
-    const from = fromEl ? fromEl.value : Utils.todayStr();
-    const to = toEl ? toEl.value : Utils.todayStr();
+  const fromEl = document.getElementById('profFrom');
+  const toEl = document.getElementById('profTo');
+  const from = fromEl ? fromEl.value : Utils.todayStr();
+  const to = toEl ? toEl.value : Utils.todayStr();
 
-    const sales = (cache.sales_invoices || []).filter(function (s) { return s.date && s.date.split('T')[0] >= from && s.date.split('T')[0] <= to; });
-    const salesReturns = (cache.sales_returns || []).filter(function (r) { return r.date && r.date.split('T')[0] >= from && r.date.split('T')[0] <= to; });
-    const expenses = (cache.expenses || []).filter(function (e) { return e.date && e.date.split('T')[0] >= from && e.date.split('T')[0] <= to; });
-    const revenues = (cache.revenues || []).filter(function (r) { return r.date && r.date.split('T')[0] >= from && r.date.split('T')[0] <= to; });
-    const payrolls = (cache.payroll || []).filter(function (p) { return p.month >= from.substring(0, 7) && p.month <= to.substring(0, 7); });
+  // ⚠️ فلترة البيانات حسب التاريخ
+  const sales = (cache.sales_invoices || []).filter(function (s) {
+    return s.date && s.date.split('T')[0] >= from && s.date.split('T')[0] <= to;
+  });
+  const salesReturns = (cache.sales_returns || []).filter(function (r) {
+    return r.date && r.date.split('T')[0] >= from && r.date.split('T')[0] <= to;
+  });
+  const expenses = (cache.expenses || []).filter(function (e) {
+    return e.date && e.date.split('T')[0] >= from && e.date.split('T')[0] <= to;
+  });
+  const revenues = (cache.revenues || []).filter(function (r) {
+    return r.date && r.date.split('T')[0] >= from && r.date.split('T')[0] <= to;
+  });
+  const payrolls = (cache.payroll || []).filter(function (p) {
+    return p.month >= from.substring(0, 7) && p.month <= to.substring(0, 7);
+  });
 
-    const salesTotal = sales.reduce(function (s, i) { return s + (Number(i.total) || 0); }, 0);
-    const salesRetTotal = salesReturns.reduce(function (s, r) { return s + (Number(r.total) || 0); }, 0);
-    const expensesTotal = expenses.reduce(function (s, e) { return s + (Number(e.amount) || 0); }, 0);
-    const revenuesTotal = revenues.reduce(function (s, r) { return s + (Number(r.amount) || 0); }, 0);
-    const salariesTotal = payrolls.reduce(function (s, p) { return s + (Number(p.net_salary) || 0); }, 0);
+  // ⚠️ الإجماليات
+  const salesTotal = sales.reduce(function (s, i) { return s + (Number(i.total) || 0); }, 0);
+  const salesRetTotal = salesReturns.reduce(function (s, r) { return s + (Number(r.total) || 0); }, 0);
+  const expensesTotal = expenses.reduce(function (s, e) { return s + (Number(e.amount) || 0); }, 0);
+  const revenuesTotal = revenues.reduce(function (s, r) { return s + (Number(r.amount) || 0); }, 0);
+  const salariesTotal = payrolls.reduce(function (s, p) { return s + (Number(p.net_salary) || 0); }, 0);
 
-    const salesIds = sales.map(function (s) { return s.id; });
-    const cogs = (cache.sales_items || []).filter(function (it) { return salesIds.includes(it.invoice_id); })
-      .reduce(function (s, it) {
-        const cost = Number(it.cost_at_sale || it.cost || 0);
-        return s + cost * (Number(it.quantity) || 0);
-      }, 0);
+  // ⚠️ تكلفة المبيعات (COGS)
+  const salesIds = sales.map(function (s) { return s.id; });
+  const cogs = (cache.sales_items || [])
+    .filter(function (it) { return salesIds.includes(it.invoice_id); })
+    .reduce(function (s, it) {
+      const cost = Number(it.cost_at_sale || it.cost || 0);
+      return s + cost * (Number(it.quantity) || 0);
+    }, 0);
 
-    const netSales = salesTotal - salesRetTotal;
-    const grossProfit = netSales - cogs;
-    const netProfit = grossProfit + revenuesTotal - expensesTotal - salariesTotal;
-    const pc = netProfit >= 0 ? 'var(--green-2)' : 'var(--red-2)';
+  // ⚠️ حساب الأرباح
+  const netSales = salesTotal - salesRetTotal;
+  const grossProfit = netSales - cogs;
+  const netProfit = grossProfit + revenuesTotal - expensesTotal - salariesTotal;
+  const pc = netProfit >= 0 ? 'var(--green-2)' : 'var(--red-2)';
 
-    const el = document.getElementById('profResult');
-    if (!el) return;
-    el.innerHTML =
-      '<div class="card"><h3>📊 الأرباح والخسائر</h3>' +
-        '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>المبيعات:</span><strong style="color:var(--green-2);">+' + Utils.fmtMoney(salesTotal) + '</strong></div>' +
-        '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>مرتجع:</span><strong style="color:var(--red-2);">-' + Utils.fmtMoney(salesRetTotal) + '</strong></div>' +
-        '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;font-weight:700;"><span>صافي المبيعات:</span><strong>' + Utils.fmtMoney(netSales) + '</strong></div>' +
-        '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>تكلفة المبيعات:</span><strong style="color:var(--red-2);">-' + Utils.fmtMoney(cogs) + '</strong></div>' +
-        '<div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid var(--gold);color:var(--gold);font-weight:700;"><span>الربح الإجمالي:</span><strong>' + Utils.fmtMoney(grossProfit) + '</strong></div>' +
+  // ⚠️ حساب أرصدة الحسابات (الخزينة الحالية)
+  const accountsBalances = {};
+  for (const acc of getAllAccounts()) {
+    accountsBalances[acc.id] = { account: acc, in: 0, out: 0, balance: 0 };
+  }
+  let totalCashBalance = 0;
+
+  // ⚠️ الأرصدة الحالية (كل الحركات، مش بس الفترة)
+  for (const c of (cache.cash_transactions || [])) {
+    const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+    if (!accountsBalances[accId]) {
+      accountsBalances[accId] = {
+        account: { id: accId, label: accId, icon: '❓', color: 'var(--text-2)', order: 99 },
+        in: 0, out: 0, balance: 0
+      };
+    }
+    if (c.type === 'in') accountsBalances[accId].in += Number(c.amount) || 0;
+    else accountsBalances[accId].out += Number(c.amount) || 0;
+  }
+  for (const id in accountsBalances) {
+    accountsBalances[id].balance = accountsBalances[id].in - accountsBalances[id].out;
+    totalCashBalance += accountsBalances[id].balance;
+  }
+
+  // ⚠️ أرصدة الحسابات اللي فيها حركة
+  const accountsArr = Object.values(accountsBalances)
+    .filter(function (item) { return item.in > 0 || item.out > 0; })
+    .sort(function (a, b) {
+      return (a.account.order || 99) - (b.account.order || 99);
+    });
+
+  // ============ بناء HTML ============
+  const el = document.getElementById('profResult');
+  if (!el) return;
+
+  el.innerHTML =
+    // ============ الأرباح والخسائر ============
+    '<div class="card"><h3>📊 الأرباح والخسائر</h3>' +
+      '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;">' +
+        '<span>المبيعات:</span>' +
+        '<strong style="color:var(--green-2);">+' + Utils.fmtMoney(salesTotal) + '</strong>' +
       '</div>' +
-      '<div class="card"><h3>➕ إيرادات</h3>' +
-        '<div style="display:flex;justify-content:space-between;padding:8px 0;"><span>إيرادات:</span><strong style="color:var(--green-2);">+' + Utils.fmtMoney(revenuesTotal) + '</strong></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;">' +
+        '<span>مرتجع:</span>' +
+        '<strong style="color:var(--red-2);">-' + Utils.fmtMoney(salesRetTotal) + '</strong>' +
       '</div>' +
-      '<div class="card"><h3>➖ مصروفات</h3>' +
-        '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;"><span>مصروفات:</span><strong style="color:var(--red-2);">-' + Utils.fmtMoney(expensesTotal) + '</strong></div>' +
-        '<div style="display:flex;justify-content:space-between;padding:8px 0;"><span>مرتبات:</span><strong style="color:var(--red-2);">-' + Utils.fmtMoney(salariesTotal) + '</strong></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;font-weight:700;">' +
+        '<span>صافي المبيعات:</span>' +
+        '<strong>' + Utils.fmtMoney(netSales) + '</strong>' +
       '</div>' +
-      '<div class="card" style="border:2px solid ' + pc + ';">' +
-        '<div style="display:flex;justify-content:space-between;padding:10px 0;font-size:20px;font-weight:700;color:' + pc + ';">' +
-          '<span>صافي الربح:</span><strong>' + Utils.fmtMoney(netProfit) + '</strong>' +
-        '</div>' +
-        '<div style="text-align:center;font-size:12px;color:#888;margin-top:8px;">' + (netProfit >= 0 ? '✅ ربح' : '⚠️ خسارة') + '</div>' +
-      '</div>';
-  },
+      '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;">' +
+        '<span>تكلفة المبيعات:</span>' +
+        '<strong style="color:var(--red-2);">-' + Utils.fmtMoney(cogs) + '</strong>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid var(--gold);color:var(--gold);font-weight:700;">' +
+        '<span>الربح الإجمالي:</span>' +
+        '<strong>' + Utils.fmtMoney(grossProfit) + '</strong>' +
+      '</div>' +
+    '</div>' +
+
+    // ============ إيرادات ============
+    '<div class="card"><h3>➕ إيرادات</h3>' +
+      '<div style="display:flex;justify-content:space-between;padding:8px 0;">' +
+        '<span>إيرادات:</span>' +
+        '<strong style="color:var(--green-2);">+' + Utils.fmtMoney(revenuesTotal) + '</strong>' +
+      '</div>' +
+    '</div>' +
+
+    // ============ مصروفات ============
+    '<div class="card"><h3>➖ مصروفات</h3>' +
+      '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;">' +
+        '<span>مصروفات:</span>' +
+        '<strong style="color:var(--red-2);">-' + Utils.fmtMoney(expensesTotal) + '</strong>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;padding:8px 0;">' +
+        '<span>مرتبات:</span>' +
+        '<strong style="color:var(--red-2);">-' + Utils.fmtMoney(salariesTotal) + '</strong>' +
+      '</div>' +
+    '</div>' +
+
+    // ============ صافي الربح ============
+    '<div class="card" style="border:2px solid ' + pc + ';">' +
+      '<div style="display:flex;justify-content:space-between;padding:10px 0;font-size:20px;font-weight:700;color:' + pc + ';">' +
+        '<span>صافي الربح:</span>' +
+        '<strong>' + Utils.fmtMoney(netProfit) + '</strong>' +
+      '</div>' +
+      '<div style="text-align:center;font-size:12px;color:#888;margin-top:8px;">' +
+        (netProfit >= 0 ? '✅ ربح' : '⚠️ خسارة') +
+      '</div>' +
+    '</div>' +
+
+    // ============ 🆕 الأرصدة النقدية (جديد) ============
+    '<div class="card">' +
+      '<h3>💰 الأرصدة النقدية الحالية</h3>' +
+      '<p style="font-size:11px;color:#888;margin-bottom:10px;">' +
+        '(الأرصدة الحالية بغض النظر عن الفترة المحددة)' +
+      '</p>' +
+
+      // تفصيل الحسابات
+      (accountsArr.length > 0
+        ? accountsArr.map(function (item) {
+            const acc = item.account;
+            const icon = acc.icon || '💰';
+            const label = acc.label || acc.id;
+            const color = acc.color || 'var(--gold)';
+            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(212,175,55,.1);">' +
+              '<div>' +
+                '<div style="color:' + color + ';font-weight:600;font-size:13px;">' + icon + ' ' + Utils.esc(label) + '</div>' +
+              '</div>' +
+              '<div style="font-weight:700;color:' + color + ';font-size:14px;">' + Utils.fmtMoney(item.balance) + '</div>' +
+            '</div>';
+          }).join('')
+        : '<p style="color:#666;text-align:center;font-size:12px;">لا توجد حركات خزينة</p>') +
+
+      // الإجمالي
+      '<div style="display:flex;justify-content:space-between;padding:12px 0;border-top:2px solid var(--gold);margin-top:8px;font-size:18px;font-weight:800;color:var(--gold);">' +
+        '<span>الإجمالي الكلي:</span>' +
+        '<strong>' + Utils.fmtMoney(totalCashBalance) + '</strong>' +
+      '</div>' +
+    '</div>';
+},
 
   loadTop() {
     const salesItems = cache.sales_items || [];
