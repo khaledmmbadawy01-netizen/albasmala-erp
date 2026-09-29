@@ -2830,44 +2830,112 @@ const Menu = {
    ═══════════════════════════════════════════════════════════════════ */
 const Dashboard = {
   render() {
-    const sales = cache.sales_invoices || [];
-    const purch = cache.purchase_invoices || [];
-    const products = cache.products || [];
-    const employees = cache.employees || [];
-    const cash = cache.cash_transactions || [];
-    const salesRet = cache.sales_returns || [];
-    const purchRet = cache.purchase_returns || [];
-    const today = Utils.todayStr();
+  const sales = cache.sales_invoices || [];
+  const purch = cache.purchase_invoices || [];
+  const products = cache.products || [];
+  const employees = cache.employees || [];
+  const cash = cache.cash_transactions || [];
+  const salesRet = cache.sales_returns || [];
+  const purchRet = cache.purchase_returns || [];
+  const today = Utils.todayStr();
 
-    const salesToday = sales.filter(function (s) { return s.date && s.date.startsWith(today); });
-    const purchToday = purch.filter(function (s) { return s.date && s.date.startsWith(today); });
-    const salesTotal = salesToday.reduce(function (s, i) { return s + (Number(i.total) || 0); }, 0);
-    const purchTotal = purchToday.reduce(function (s, i) { return s + (Number(i.total) || 0); }, 0);
-    const cashIn = cash.filter(function (c) { return c.type === 'in'; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
-    const cashOut = cash.filter(function (c) { return c.type === 'out'; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
-    const cashBalance = cashIn - cashOut;
-    const receivables = sales.reduce(function (s, i) { return s + (Number(i.remaining) || 0); }, 0);
-    const payables = purch.reduce(function (s, i) { return s + (Number(i.remaining) || 0); }, 0);
-    const lowStock = products.filter(function (p) {
-      return p.active !== false && (Number(p.quantity) || 0) <= (Number(p.min_quantity) || 5);
-    }).length;
-    const activeEmps = employees.filter(function (e) { return e.active !== false; }).length;
-    const presentToday = (cache.attendance || []).filter(function (a) { return a.date === today && a.check_in; }).length;
+  // ⚠️ إحصائيات اليوم
+  const salesToday = sales.filter(function (s) { return s.date && s.date.startsWith(today); });
+  const purchToday = purch.filter(function (s) { return s.date && s.date.startsWith(today); });
+  const salesTotal = salesToday.reduce(function (s, i) { return s + (Number(i.total) || 0); }, 0);
+  const purchTotal = purchToday.reduce(function (s, i) { return s + (Number(i.total) || 0); }, 0);
 
-    const html =
-      '<div class="stat-card green"><div class="label">مبيعات اليوم</div><div class="value">' + Utils.fmtNum(salesTotal) + '</div><div style="font-size:11px;color:#999;">' + salesToday.length + ' فاتورة</div></div>' +
-      '<div class="stat-card orange"><div class="label">مشتريات اليوم</div><div class="value">' + Utils.fmtNum(purchTotal) + '</div><div style="font-size:11px;color:#999;">' + purchToday.length + ' فاتورة</div></div>' +
-      '<div class="stat-card blue"><div class="label">رصيد الخزينة</div><div class="value">' + Utils.fmtNum(cashBalance) + '</div></div>' +
-      '<div class="stat-card red"><div class="label">مستحقات (لنا)</div><div class="value">' + Utils.fmtNum(receivables) + '</div></div>' +
-      '<div class="stat-card red"><div class="label">التزامات (علينا)</div><div class="value">' + Utils.fmtNum(payables) + '</div></div>' +
-      '<div class="stat-card green"><div class="label">الحضور اليوم</div><div class="value">' + presentToday + ' / ' + activeEmps + '</div></div>' +
-      '<div class="stat-card orange"><div class="label">نواقص المخزون</div><div class="value">' + lowStock + '</div></div>' +
-      '<div class="stat-card"><div class="label">المنتجات</div><div class="value">' + products.filter(function (p) { return p.active !== false; }).length + '</div></div>' +
-      '<div class="stat-card green"><div class="label">مرتجع مبيعات</div><div class="value">' + Utils.fmtNum(salesRet.reduce(function (s, r) { return s + (Number(r.total) || 0); }, 0)) + '</div></div>' +
-      '<div class="stat-card orange"><div class="label">مرتجع مشتريات</div><div class="value">' + Utils.fmtNum(purchRet.reduce(function (s, r) { return s + (Number(r.total) || 0); }, 0)) + '</div></div>';
-    const el = document.getElementById('dashboardStats');
-    if (el) el.innerHTML = html;
+  // ⚠️ حساب أرصدة كل حساب فرعي
+  const accountsBalances = {};
+  for (const acc of getAllAccounts()) {
+    accountsBalances[acc.id] = { account: acc, in: 0, out: 0, balance: 0 };
   }
+  let totalCashIn = 0, totalCashOut = 0, totalCashBalance = 0;
+
+  for (const c of cash) {
+    const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+    if (!accountsBalances[accId]) {
+      accountsBalances[accId] = {
+        account: { id: accId, label: accId, icon: '❓', color: 'var(--text-2)', order: 99 },
+        in: 0, out: 0, balance: 0
+      };
+    }
+    if (c.type === 'in') {
+      accountsBalances[accId].in += Number(c.amount) || 0;
+      totalCashIn += Number(c.amount) || 0;
+    } else {
+      accountsBalances[accId].out += Number(c.amount) || 0;
+      totalCashOut += Number(c.amount) || 0;
+    }
+  }
+  for (const id in accountsBalances) {
+    accountsBalances[id].balance = accountsBalances[id].in - accountsBalances[id].out;
+    totalCashBalance += accountsBalances[id].balance;
+  }
+
+  // ⚠️ مستحقات / التزامات
+  const receivables = sales.reduce(function (s, i) { return s + (Number(i.remaining) || 0); }, 0);
+  const payables = purch.reduce(function (s, i) { return s + (Number(i.remaining) || 0); }, 0);
+
+  // ⚠️ مخزون + موظفين
+  const lowStock = products.filter(function (p) {
+    return p.active !== false && (Number(p.quantity) || 0) <= (Number(p.min_quantity) || 5);
+  }).length;
+  const activeEmps = employees.filter(function (e) { return e.active !== false; }).length;
+  const presentToday = (cache.attendance || []).filter(function (a) { return a.date === today && a.check_in; }).length;
+
+  // ⚠️ بطاقات الحسابات (بس اللي فيها رصيد)
+  const accountsArr = Object.values(accountsBalances).sort(function (a, b) {
+    return (a.account.order || 99) - (b.account.order || 99);
+  });
+
+  let accountsCardsHtml = '';
+  for (const item of accountsArr) {
+    if (item.in === 0 && item.out === 0) continue;
+    const acc = item.account;
+    const icon = acc.icon || '💰';
+    const label = acc.label || acc.id;
+    accountsCardsHtml +=
+      '<div class="stat-card" style="border-right-color:' + (acc.color || 'var(--gold)') + ';">' +
+        '<div class="label">' + icon + ' ' + Utils.esc(label) + '</div>' +
+        '<div class="value" style="color:' + (acc.color || 'var(--gold)') + ';">' + Utils.fmtNum(item.balance) + '</div>' +
+      '</div>';
+  }
+
+  // ⚠️ بناء HTML
+  const html =
+    // ===== بطاقات أساسية =====
+    '<div class="stat-card green"><div class="label">مبيعات اليوم</div><div class="value">' + Utils.fmtNum(salesTotal) + '</div><div style="font-size:11px;color:#999;">' + salesToday.length + ' فاتورة</div></div>' +
+    '<div class="stat-card orange"><div class="label">مشتريات اليوم</div><div class="value">' + Utils.fmtNum(purchTotal) + '</div><div style="font-size:11px;color:#999;">' + purchToday.length + ' فاتورة</div></div>' +
+
+    // ===== إجمالي الخزينة =====
+    '<div class="stat-card blue" style="grid-column:span 2;border-right-color:var(--blue);">' +
+      '<div class="label">💰 إجمالي الخزينة</div>' +
+      '<div class="value" style="font-size:26px;">' + Utils.fmtNum(totalCashBalance) + '</div>' +
+      '<div class="sub-value" style="font-size:11px;color:var(--text-2);">واردات: +' + Utils.fmtNum(totalCashIn) + ' | صادرات: -' + Utils.fmtNum(totalCashOut) + '</div>' +
+    '</div>' +
+
+    // ===== تفصيل الحسابات =====
+    (accountsCardsHtml
+      ? '<div style="grid-column:span 2;padding:10px 0 4px;color:var(--gold);font-weight:700;font-size:13px;">📊 تفصيل الحسابات:</div>' + accountsCardsHtml
+      : '') +
+
+    // ===== بطاقات مالية =====
+    '<div class="stat-card red"><div class="label">مستحقات (لنا)</div><div class="value">' + Utils.fmtNum(receivables) + '</div></div>' +
+    '<div class="stat-card red"><div class="label">التزامات (علينا)</div><div class="value">' + Utils.fmtNum(payables) + '</div></div>' +
+
+    // ===== بطاقات الموظفين والمخزون =====
+    '<div class="stat-card green"><div class="label">الحضور اليوم</div><div class="value">' + presentToday + ' / ' + activeEmps + '</div></div>' +
+    '<div class="stat-card orange"><div class="label">نواقص المخزون</div><div class="value">' + lowStock + '</div></div>' +
+    '<div class="stat-card"><div class="label">المنتجات</div><div class="value">' + products.filter(function (p) { return p.active !== false; }).length + '</div></div>' +
+
+    // ===== بطاقات المرتجعات =====
+    '<div class="stat-card green"><div class="label">مرتجع مبيعات</div><div class="value">' + Utils.fmtNum(salesRet.reduce(function (s, r) { return s + (Number(r.total) || 0); }, 0)) + '</div></div>' +
+    '<div class="stat-card orange"><div class="label">مرتجع مشتريات</div><div class="value">' + Utils.fmtNum(purchRet.reduce(function (s, r) { return s + (Number(r.total) || 0); }, 0)) + '</div></div>';
+
+  const el = document.getElementById('dashboardStats');
+  if (el) el.innerHTML = html;
+ }
 };
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -5992,29 +6060,155 @@ const Statements = {
     const toEl = document.getElementById('stmtCashTo');
     const from = fromEl ? fromEl.value : '';
     const to = toEl ? toEl.value : '';
-    const cash = (cache.cash_transactions || [])
-      .filter(function (c) { return c.date && c.date.split('T')[0] >= from && c.date.split('T')[0] <= to; })
-      .sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); });
 
-    let inTotal = 0, outTotal = 0;
-    let html = '<div class="card"><h3>حركة الخزينة</h3>' +
-      '<p style="font-size:12px;color:#aaa;">من ' + from + ' إلى ' + to + '</p></div>';
+    // ⚠️ فلترة الحركات حسب التاريخ
+    const allCash = (cache.cash_transactions || [])
+      .filter(function (c) {
+        if (!from || !to) return true;
+        return c.date && c.date.split('T')[0] >= from && c.date.split('T')[0] <= to;
+      })
+      .sort(function (a, b) {
+        return (a.date || '').localeCompare(b.date || '');
+      });
 
-    for (const c of cash) {
-      if (c.type === 'in') inTotal += Number(c.amount) || 0;
-      else outTotal += Number(c.amount) || 0;
-      html += '<div class="list-item"><div class="info">' +
-        '<h4 style="color:' + (c.type === 'in' ? 'var(--green-2)' : 'var(--red-2)') + ';">' +
-          (c.type === 'in' ? '↓ وارد' : '↑ صادر') + ' - ' + Utils.fmtMoney(c.amount) + '</h4>' +
-        '<p>' + Utils.esc(c.description || '-') + '</p>' +
-        '<p style="font-size:11px;">' + Utils.fmtDate(c.date) + '</p>' +
-      '</div></div>';
+    // ⚠️ تجميع حسب الحساب
+    const byAccount = {};
+    for (const acc of getAllAccounts()) {
+      byAccount[acc.id] = { account: acc, in: 0, out: 0, balance: 0, transactions: [] };
     }
+
+    let totalIn = 0, totalOut = 0;
+
+    for (const c of allCash) {
+      const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+      if (!byAccount[accId]) {
+        byAccount[accId] = {
+          account: { id: accId, label: accId, icon: '❓', color: 'var(--text-2)', order: 99 },
+          in: 0, out: 0, balance: 0, transactions: []
+        };
+      }
+      if (c.type === 'in') {
+        byAccount[accId].in += Number(c.amount) || 0;
+        totalIn += Number(c.amount) || 0;
+      } else {
+        byAccount[accId].out += Number(c.amount) || 0;
+        totalOut += Number(c.amount) || 0;
+      }
+      byAccount[accId].transactions.push(c);
+    }
+
+    // ⚠️ حساب الأرصدة
+    for (const id in byAccount) {
+      byAccount[id].balance = byAccount[id].in - byAccount[id].out;
+    }
+
+    // ⚠️ ترتيب الحسابات
+    const accountsArr = Object.values(byAccount).sort(function (a, b) {
+      return (a.account.order || 99) - (b.account.order || 99);
+    });
+
+    // ⚠️ بناء HTML
+    let html = '';
+
+    // ============ ملخص الفترة ============
     html += '<div class="card">' +
-      '<div style="display:flex;justify-content:space-between;padding:8px 0;"><span>الواردات:</span><strong style="color:var(--green-2);">' + Utils.fmtMoney(inTotal) + '</strong></div>' +
-      '<div style="display:flex;justify-content:space-between;padding:8px 0;"><span>الصادرات:</span><strong style="color:var(--red-2);">' + Utils.fmtMoney(outTotal) + '</strong></div>' +
-      '<div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid var(--gold);font-weight:700;color:var(--gold);"><span>الصافي:</span><strong>' + Utils.fmtMoney(inTotal - outTotal) + '</strong></div>' +
+      '<h3>📊 ملخص الفترة</h3>' +
+      '<p style="font-size:12px;color:#aaa;">' +
+        (from && to
+          ? 'من ' + Utils.esc(from) + ' إلى ' + Utils.esc(to)
+          : 'كل الحركات') +
+      '</p>' +
+      '<div style="display:flex;justify-content:space-between;padding:8px 0;">' +
+        '<span>إجمالي الواردات:</span>' +
+        '<strong style="color:var(--green-2);">' + Utils.fmtMoney(totalIn) + '</strong>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;padding:8px 0;">' +
+        '<span>إجمالي الصادرات:</span>' +
+        '<strong style="color:var(--red-2);">' + Utils.fmtMoney(totalOut) + '</strong>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid var(--gold);font-weight:700;color:var(--gold);">' +
+        '<span>الصافي:</span>' +
+        '<strong>' + Utils.fmtMoney(totalIn - totalOut) + '</strong>' +
+      '</div>' +
     '</div>';
+
+    // ============ أرصدة الحسابات ============
+    const accountsWithActivity = accountsArr.filter(function (item) {
+      return item.in > 0 || item.out > 0;
+    });
+
+    if (accountsWithActivity.length > 0) {
+      html += '<div class="card">' +
+        '<h3>💰 أرصدة الحسابات</h3>';
+
+      for (const item of accountsWithActivity) {
+        const acc = item.account;
+        const icon = acc.icon || '💰';
+        const label = acc.label || acc.id;
+        const color = acc.color || 'var(--gold)';
+
+        html += '<div style="padding:10px 0;border-bottom:1px solid #222;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+            '<div>' +
+              '<div style="color:' + color + ';font-weight:700;font-size:14px;">' + icon + ' ' + Utils.esc(label) + '</div>' +
+              '<div style="font-size:11px;color:#888;margin-top:2px;">وارد: +' + Utils.fmtNum(item.in) + ' | صادر: -' + Utils.fmtNum(item.out) + '</div>' +
+            '</div>' +
+            '<div style="text-align:left;">' +
+              '<div style="color:' + color + ';font-weight:800;font-size:16px;">' + Utils.fmtNum(item.balance) + '</div>' +
+              '<div style="font-size:10px;color:#666;">' + CURRENCY + '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }
+
+      html += '</div>';
+    }
+
+    // ============ تفاصيل الحركات لكل حساب ============
+    if (accountsWithActivity.length > 0) {
+      for (const item of accountsWithActivity) {
+        const acc = item.account;
+        const icon = acc.icon || '💰';
+        const label = acc.label || acc.id;
+        const color = acc.color || 'var(--gold)';
+
+        html += '<div class="card">' +
+          '<h3 style="color:' + color + ';">' + icon + ' ' + Utils.esc(label) + '</h3>';
+
+        // عرض آخر 50 حركة
+        const txns = item.transactions.slice(0, 50);
+        for (const c of txns) {
+          html += '<div class="list-item" style="margin:4px 0;">' +
+            '<div class="info">' +
+              '<h4 style="color:' + (c.type === 'in' ? 'var(--green-2)' : 'var(--red-2)') + ';font-size:13px;">' +
+                (c.type === 'in' ? '↓ وارد' : '↑ صادر') + ' - ' + Utils.fmtMoney(c.amount) +
+              '</h4>' +
+              '<p style="font-size:12px;">' + Utils.esc(c.description || '-') + '</p>' +
+              '<p style="font-size:11px;color:#888;">' +
+                Utils.fmtDate(c.date) +
+                (c.reference ? ' | ' + Utils.esc(c.reference) : '') +
+              '</p>' +
+            '</div>' +
+          '</div>';
+        }
+
+        if (item.transactions.length > 50) {
+          html += '<p style="text-align:center;color:#666;font-size:11px;padding:8px;">' +
+            '(يتم عرض 50 حركة من إجمالي ' + item.transactions.length + ')' +
+          '</p>';
+        }
+
+        html += '</div>';
+      }
+    }
+
+    // ============ لو مفيش حركات ============
+    if (allCash.length === 0) {
+      html = '<div class="card">' +
+        '<div class="empty"><div class="ico">💰</div>لا توجد حركات في هذه الفترة</div>' +
+      '</div>';
+    }
+
     const el = document.getElementById('stmtCashList');
     if (el) el.innerHTML = html;
   }
