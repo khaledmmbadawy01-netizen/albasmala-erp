@@ -1780,58 +1780,339 @@ const Export = {
   }
 },
 
-  toExcel(doc, items, docType) {
+toExcel(doc, items, docType) {
+  // ⚠️ لو مكتبة xlsx مش موجودة، نرجع للطريقة القديمة (CSV)
+  if (typeof XLSX === 'undefined') {
+    console.warn('xlsx library not loaded, falling back to CSV');
+    return Export.toCSV(doc, items, docType);
+  }
+
+  try {
+    // ⚠️ اسم الملف
+    const docNo = doc.invoice_no || doc.return_no || doc.voucher_no ||
+                  ('PAY-' + (doc.month || '')) || 'document';
+    const safeName = String(docNo).replace(/[^A-Za-z0-9\-_]/g, '_');
+    const filename = 'albasmala_' + docType + '_' + safeName + '.xlsx';
+
     const titles = {
       sales: 'فاتورة مبيعات', purchase: 'فاتورة مشتريات',
       sales_return: 'مرتجع مبيعات', purchase_return: 'مرتجع مشتريات',
       voucher_receipt: 'سند قبض', voucher_payment: 'سند دفع',
       payroll: 'مفردات مرتب'
     };
-    let csv = '\uFEFF';
-    csv += 'شركة البسملة - ' + (titles[docType] || 'مستند') + '\n';
-    csv += 'رقم المستند,' + (doc.invoice_no || doc.return_no || doc.voucher_no || '-') + '\n';
-    csv += 'التاريخ,' + Utils.fmtDate(doc.date || doc.created_at) + '\n';
-    csv += 'الجهة,' + (doc.customer_name || doc.supplier_name || doc.party_name || doc.employee_name || '-') + '\n';
-    csv += 'الموظف,' + (doc.employee_name || '-') + '\n\n';
-    if (docType !== 'voucher_receipt' && docType !== 'voucher_payment' && docType !== 'payroll') {
-      csv += 'الصنف,الكمية,السعر,الإجمالي\n';
-      for (const it of items) {
-        csv += '"' + (it.product_name || it.name || 'صنف') + '",' + it.quantity + ',' + it.price + ',' + it.total + '\n';
-      }
-      csv += '\n';
-      csv += 'الإجمالي الفرعي,' + (doc.subtotal || 0) + '\n';
-      csv += 'الخصم,' + (doc.discount || 0) + '\n';
-      csv += 'الضريبة,' + (doc.tax || 0) + '\n';
-      csv += 'الإجمالي,' + (doc.total || 0) + '\n';
-      csv += 'المدفوع,' + (doc.paid || 0) + '\n';
-      csv += 'الباقي,' + (doc.remaining || 0) + '\n';
-    } else if (docType === 'payroll') {
-      csv += 'البند,القيمة\n';
-      csv += 'الأساسي,' + (doc.basic_salary || 0) + '\n';
-      csv += 'بدل سكن,' + (doc.housing_allowance || 0) + '\n';
-      csv += 'بدل مواصلات,' + (doc.transport_allowance || 0) + '\n';
-      csv += 'مكافآت,' + (doc.bonuses || 0) + '\n';
-      csv += 'خصم غياب,' + (doc.absence_deduction || 0) + '\n';
-      csv += 'خصم تأخير,' + (doc.late_deduction || 0) + '\n';
-      csv += 'الصافي,' + (doc.net_salary || 0) + '\n';
-    } else {
-      csv += 'المبلغ,' + (doc.amount || 0) + '\n';
-      csv += 'طريقة الدفع,' + (doc.payment_method || '-') + '\n';
-      csv += 'البيان,' + (doc.description || '-') + '\n';
-    }
-    csv += '\nتم التصدير: ' + new Date().toLocaleString('ar-EG') + '\n';
-    csv += 'الموظف: ' + (State.currentEmployee ? State.currentEmployee.name : '-') + '\n';
 
-    const filename = 'albasmala_' + docType + '_' + (doc.invoice_no || doc.return_no || doc.voucher_no || Date.now()) + '.csv';
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const partyLabels = {
+      sales: 'العميل', purchase: 'المورد',
+      sales_return: 'العميل', purchase_return: 'المورد',
+      voucher_receipt: 'الجهة', voucher_payment: 'الجهة',
+      payroll: 'الموظف'
+    };
+
+    const partyName = doc.customer_name || doc.supplier_name || doc.party_name ||
+                      doc.employee_name || '-';
+
+    // ⚠️ بناء ورقة العمل (Worksheet)
+    const rows = [];
+
+    // رأس المستند
+    rows.push(['شركة البسملة - ' + (titles[docType] || 'مستند')]);
+    rows.push([]);
+    rows.push(['رقم المستند', docNo]);
+    rows.push(['التاريخ', Utils.fmtDate(doc.date || doc.created_at)]);
+    rows.push([partyLabels[docType] || 'الجهة', partyName]);
+    rows.push(['الموظف', doc.employee_name || '-']);
+    rows.push([]);
+
+    // تفاصيل حسب النوع
+    if (docType === 'payroll') {
+      rows.push(['البند', 'القيمة']);
+      rows.push(['الراتب الأساسي', doc.basic_salary || 0]);
+      rows.push(['بدل سكن', doc.housing_allowance || 0]);
+      rows.push(['بدل مواصلات', doc.transport_allowance || 0]);
+      rows.push(['مكافآت', doc.bonuses || 0]);
+      rows.push(['خصم غياب', doc.absence_deduction || 0]);
+      rows.push(['خصم تأخير', doc.late_deduction || 0]);
+      rows.push(['تأمينات', doc.insurance_deduction || 0]);
+      rows.push(['ضريبة', doc.tax_deduction || 0]);
+      rows.push(['سلف', doc.advances_deduction || 0]);
+      rows.push(['صافي الراتب', doc.net_salary || 0]);
+    } else if (docType === 'voucher_receipt' || docType === 'voucher_payment') {
+      rows.push(['البند', 'القيمة']);
+      rows.push(['المبلغ', doc.amount || 0]);
+      rows.push(['طريقة الدفع', doc.payment_method || '-']);
+      rows.push(['الحساب', doc.account_label || '-']);
+      rows.push(['البيان', doc.description || '-']);
+    } else {
+      // فواتير بيع / شراء / مرتجعات
+      rows.push(['الصنف', 'الكمية', 'السعر', 'الإجمالي']);
+      for (const it of items) {
+        rows.push([
+          it.product_name || it.name || 'صنف',
+          Number(it.quantity) || 0,
+          Number(it.price) || 0,
+          Number(it.total) || 0
+        ]);
+      }
+      rows.push([]);
+      rows.push(['الإجمالي الفرعي', doc.subtotal || 0]);
+      rows.push(['نوع الخصم', doc.discount_type === 'percent' ? 'نسبة %' : 'مبلغ']);
+      if (doc.discount_type === 'percent') {
+        rows.push(['قيمة الخصم', (doc.discount_value || 0) + '%']);
+      }
+      rows.push(['الخصم الفعلي', doc.discount || 0]);
+      rows.push(['الضريبة', doc.tax || 0]);
+      rows.push(['الإجمالي', doc.total || 0]);
+      rows.push(['المدفوع', doc.paid || 0]);
+      rows.push(['الباقي', doc.remaining || 0]);
+      rows.push(['طريقة الدفع', doc.payment_method || '-']);
+      rows.push(['الحساب', doc.account_label || '-']);
+    }
+
+    rows.push([]);
+    rows.push(['تم التصدير', new Date().toLocaleString('ar-EG')]);
+    rows.push(['الموظف', State.currentEmployee ? State.currentEmployee.name : '-']);
+
+    // ⚠️ إنشاء الـ Worksheet
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+
+    // ⚠️ ضبط عرض الأعمدة
+    ws['!cols'] = [
+      { wch: 25 }, // العمود الأول (الصنف/البند)
+      { wch: 15 }, // الثاني (الكمية/القيمة)
+      { wch: 15 }, // الثالث (السعر)
+      { wch: 15 }  // الرابع (الإجمالي)
+    ];
+
+    // ⚠️ دمج الخلايا للعنوان
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } } // دمج الصف الأول
+    ];
+
+    // ⚠️ إنشاء الـ Workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'المستند');
+
+    // ⚠️ تحميل الملف
+    XLSX.writeFile(wb, filename);
+
+    Toast.show('✅ تم تحميل ملف Excel: ' + filename);
+    Utils.vibrate(80);
+
+  } catch (e) {
+    console.error('Excel generation failed:', e);
+    Toast.show('⚠️ فشل توليد Excel — استخدام CSV', 'error');
+    return Export.toCSV(doc, items, docType);
+  }
+},
+
+// ⚠️ دالة احتياطية (CSV) لو مكتبة xlsx مش موجودة
+toCSV(doc, items, docType) {
+  const titles = {
+    sales: 'فاتورة مبيعات', purchase: 'فاتورة مشتريات',
+    sales_return: 'مرتجع مبيعات', purchase_return: 'مرتجع مشتريات',
+    voucher_receipt: 'سند قبض', voucher_payment: 'سند دفع',
+    payroll: 'مفردات مرتب'
+  };
+  let csv = '\uFEFF';
+  csv += 'شركة البسملة - ' + (titles[docType] || 'مستند') + '\n';
+  csv += 'رقم المستند,' + (doc.invoice_no || doc.return_no || doc.voucher_no || '-') + '\n';
+  csv += 'التاريخ,' + Utils.fmtDate(doc.date || doc.created_at) + '\n';
+  csv += 'الجهة,' + (doc.customer_name || doc.supplier_name || doc.party_name || doc.employee_name || '-') + '\n';
+  csv += 'الموظف,' + (doc.employee_name || '-') + '\n\n';
+  if (docType !== 'voucher_receipt' && docType !== 'voucher_payment' && docType !== 'payroll') {
+    csv += 'الصنف,الكمية,السعر,الإجمالي\n';
+    for (const it of items) {
+      csv += '"' + (it.product_name || it.name || 'صنف') + '",' + it.quantity + ',' + it.price + ',' + it.total + '\n';
+    }
+    csv += '\n';
+    csv += 'الإجمالي الفرعي,' + (doc.subtotal || 0) + '\n';
+    csv += 'الخصم,' + (doc.discount || 0) + '\n';
+    csv += 'الضريبة,' + (doc.tax || 0) + '\n';
+    csv += 'الإجمالي,' + (doc.total || 0) + '\n';
+    csv += 'المدفوع,' + (doc.paid || 0) + '\n';
+    csv += 'الباقي,' + (doc.remaining || 0) + '\n';
+  } else if (docType === 'payroll') {
+    csv += 'البند,القيمة\n';
+    csv += 'الأساسي,' + (doc.basic_salary || 0) + '\n';
+    csv += 'بدل سكن,' + (doc.housing_allowance || 0) + '\n';
+    csv += 'بدل مواصلات,' + (doc.transport_allowance || 0) + '\n';
+    csv += 'مكافآت,' + (doc.bonuses || 0) + '\n';
+    csv += 'خصم غياب,' + (doc.absence_deduction || 0) + '\n';
+    csv += 'خصم تأخير,' + (doc.late_deduction || 0) + '\n';
+    csv += 'الصافي,' + (doc.net_salary || 0) + '\n';
+  } else {
+    csv += 'المبلغ,' + (doc.amount || 0) + '\n';
+    csv += 'طريقة الدفع,' + (doc.payment_method || '-') + '\n';
+    csv += 'البيان,' + (doc.description || '-') + '\n';
+  }
+  csv += '\nتم التصدير: ' + new Date().toLocaleString('ar-EG') + '\n';
+  csv += 'الموظف: ' + (State.currentEmployee ? State.currentEmployee.name : '-') + '\n';
+
+  const filename = 'albasmala_' + docType + '_' + (doc.invoice_no || doc.return_no || doc.voucher_no || Date.now()) + '.csv';
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  Toast.show('✅ تم تحميل ملف CSV');
+},
+
+// ⚠️ حفظ أي ملف (HTML / PDF / Excel / صورة) على جهاز المستخدم
+async saveFile(doc, items, docType, format) {
+  format = format || 'html'; // html | pdf | excel | txt | json
+
+  try {
+    const docNo = doc.invoice_no || doc.return_no || doc.voucher_no ||
+                  ('PAY-' + (doc.month || '')) || 'document';
+    const safeName = String(docNo).replace(/[^A-Za-z0-9\-_]/g, '_');
+    const baseName = 'albasmala_' + docType + '_' + safeName;
+
+    // ⚠️ HTML → حفظ كملف HTML
+    if (format === 'html') {
+      const html = Export.generateHTML(doc, items, docType);
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      Export.downloadBlob(blob, baseName + '.html');
+      Toast.show('✅ تم حفظ الملف كـ HTML');
+      Utils.vibrate(80);
+      return true;
+    }
+
+    // ⚠️ PDF → استخدام html2pdf
+    if (format === 'pdf') {
+      if (typeof html2pdf === 'undefined') {
+        Toast.show('⚠️ مكتبة PDF غير محمّلة — سيتم استخدام HTML', 'info');
+        return Export.saveFile(doc, items, docType, 'html');
+      }
+      return Export.toPDF(doc, items, docType);
+    }
+
+    // ⚠️ Excel → استخدام xlsx
+    if (format === 'excel') {
+      return Export.toExcel(doc, items, docType);
+    }
+
+    // ⚠️ TXT → حفظ كنص عادي
+    if (format === 'txt') {
+      const text = Export.generateText(doc, items, docType);
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      Export.downloadBlob(blob, baseName + '.txt');
+      Toast.show('✅ تم حفظ الملف كـ TXT');
+      Utils.vibrate(80);
+      return true;
+    }
+
+    // ⚠️ JSON → حفظ كـ JSON
+    if (format === 'json') {
+      const data = {
+        doc: doc,
+        items: items,
+        docType: docType,
+        exported_at: Utils.nowISO(),
+        exported_by: State.currentEmployee ? State.currentEmployee.name : '-',
+        company: State.currentCompanyId
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+      Export.downloadBlob(blob, baseName + '.json');
+      Toast.show('✅ تم حفظ الملف كـ JSON');
+      Utils.vibrate(80);
+      return true;
+    }
+
+    // ⚠️ Fallback
+    Toast.show('⚠️ صيغة غير مدعومة: ' + format, 'error');
+    return false;
+
+  } catch (e) {
+    console.error('saveFile error:', e);
+    Toast.show('❌ فشل الحفظ: ' + e.message, 'error');
+    return false;
+  }
+},
+
+// ⚠️ دالة مساعدة لتحميل Blob
+downloadBlob(blob, filename) {
+  try {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
-    Toast.show('✅ تم تحميل ملف Excel');
-  },
+    setTimeout(function () {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 200);
+    return true;
+  } catch (e) {
+    console.error('downloadBlob error:', e);
+    return false;
+  }
+},
+
+// ⚠️ دالة مساعدة لتوليد نص عادي (TXT)
+generateText(doc, items, docType) {
+  const titles = {
+    sales: 'فاتورة مبيعات', purchase: 'فاتورة مشتريات',
+    sales_return: 'مرتجع مبيعات', purchase_return: 'مرتجع مشتريات',
+    voucher_receipt: 'سند قبض', voucher_payment: 'سند دفع',
+    payroll: 'مفردات مرتب'
+  };
+  const docNo = doc.invoice_no || doc.return_no || doc.voucher_no ||
+                ('PAY-' + (doc.month || '')) || 'document';
+  const partyName = doc.customer_name || doc.supplier_name || doc.party_name ||
+                    doc.employee_name || '-';
+
+  let text = '';
+  text += '═══════════════════════════════════════\n';
+  text += '       🏪 شركة البسملة\n';
+  text += '   لتجارة المشغولات الصينية\n';
+  text += '   ' + (titles[docType] || 'مستند') + '\n';
+  text += '═══════════════════════════════════════\n\n';
+  text += 'رقم المستند: ' + docNo + '\n';
+  text += 'التاريخ: ' + Utils.fmtDate(doc.date || doc.created_at) + '\n';
+  text += 'الجهة: ' + partyName + '\n';
+  text += 'الموظف: ' + (doc.employee_name || '-') + '\n';
+  text += '───────────────────────────────────────\n';
+
+  if (docType !== 'voucher_receipt' && docType !== 'voucher_payment' && docType !== 'payroll') {
+    text += 'الصنف\tالكمية\tالسعر\tالإجمالي\n';
+    text += '───────────────────────────────────────\n';
+    for (const it of items) {
+      text += (it.product_name || it.name || 'صنف') + '\t' +
+              it.quantity + '\t' +
+              it.price + '\t' +
+              it.total + '\n';
+    }
+    text += '───────────────────────────────────────\n';
+    text += 'الإجمالي الفرعي: ' + (doc.subtotal || 0) + '\n';
+    text += 'الخصم: ' + (doc.discount || 0) + '\n';
+    text += 'الضريبة: ' + (doc.tax || 0) + '\n';
+    text += 'الإجمالي: ' + (doc.total || 0) + '\n';
+    text += 'المدفوع: ' + (doc.paid || 0) + '\n';
+    text += 'الباقي: ' + (doc.remaining || 0) + '\n';
+  } else if (docType === 'payroll') {
+    text += 'الراتب الأساسي: ' + (doc.basic_salary || 0) + '\n';
+    text += 'بدل سكن: ' + (doc.housing_allowance || 0) + '\n';
+    text += 'بدل مواصلات: ' + (doc.transport_allowance || 0) + '\n';
+    text += 'مكافآت: ' + (doc.bonuses || 0) + '\n';
+    text += 'خصم غياب: ' + (doc.absence_deduction || 0) + '\n';
+    text += 'خصم تأخير: ' + (doc.late_deduction || 0) + '\n';
+    text += 'الصافي: ' + (doc.net_salary || 0) + '\n';
+  } else {
+    text += 'المبلغ: ' + (doc.amount || 0) + '\n';
+    text += 'طريقة الدفع: ' + (doc.payment_method || '-') + '\n';
+    text += 'البيان: ' + (doc.description || '-') + '\n';
+  }
+
+  text += '\n═══════════════════════════════════════\n';
+  text += 'تم التصدير: ' + new Date().toLocaleString('ar-EG') + '\n';
+  text += 'الموظف: ' + (State.currentEmployee ? State.currentEmployee.name : '-') + '\n';
+  text += '© شركة البسملة ' + new Date().getFullYear() + '\n';
+
+  return text;
+},
 
   async printDirect(doc, items, docType, method) {
     const html = Export.generateHTML(doc, items, docType);
