@@ -437,20 +437,21 @@ const Toast = {
 const Modal = {
   open(title, bodyHtml, onSave, cancelText, allowStack) {
     cancelText = cancelText || 'إغلاق';
+
     if (!allowStack) {
-      const existing = document.querySelector('.modal-overlay');
-      if (existing) existing.remove();
-      // ⚠️ مودال جديد (مش فوق التاني) — نصفّر الـ stack
+      // ⚠️ مودال جديد — اقفل أي modal مفتوح قبل كده
+      document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
       State._modalCallbacks = [];
       if (onSave) State._modalCallbacks.push(onSave);
       State._modalCallback = onSave || null;
     } else {
-      // ⚠️ modal فوق modal — نضيف الـ callback الجديد لو موجود
+      // ⚠️ modal فوق modal — نضيف الـ callback الجديد
       if (onSave) {
         State._modalCallbacks.push(onSave);
         State._modalCallback = onSave;
       }
     }
+
     const html =
       '<div class="modal-overlay"' + (allowStack ? '' : ' onclick="if(event.target===this)Modal.close()"') + '>' +
         '<div class="modal">' +
@@ -477,6 +478,7 @@ const Modal = {
     if (State._modalCallbacks && State._modalCallbacks.length > 0) {
       State._modalCallbacks.pop();
     }
+
     // ⚠️ حدّث _modalCallback للقيمة الجديدة
     if (State._modalCallbacks && State._modalCallbacks.length > 0) {
       State._modalCallback = State._modalCallbacks[State._modalCallbacks.length - 1];
@@ -484,6 +486,7 @@ const Modal = {
       State._modalCallback = null;
     }
 
+    // ⚠️ لو مفيش modal فاضل — وقّف السكانر
     const remaining = document.querySelectorAll('.modal-overlay');
     if (remaining.length === 0) {
       try { if (typeof Scanner !== 'undefined' && Scanner.stop) Scanner.stop(); } catch (e) {}
@@ -500,17 +503,21 @@ const Modal = {
   },
 
   async confirm() {
-  if (!State._modalCallback) {
-    Toast.show('لا يوجد حفظ معلق', 'error');
-    return;
-  }
-  try {
-    await State._modalCallback();
-  } catch (e) {
-    console.error('Modal confirm error:', e);
-    Toast.show('❌ خطأ: ' + (e.message || 'غير معروف'), 'error');
-  }
-},
+    if (!State._modalCallback) {
+      Toast.show('لا يوجد حفظ معلق', 'error');
+      return;
+    }
+
+    // ⚠️ نثبّت الـ callback عشان نتأكد من تنفيذ القيمة الصح
+    const callback = State._modalCallback;
+
+    try {
+      await callback();
+    } catch (e) {
+      console.error('Modal confirm error:', e);
+      Toast.show('❌ خطأ: ' + (e.message || 'غير معروف'), 'error');
+    }
+  },
 };
 
 /* ═══════════════════════════════════════════════════════════════════
