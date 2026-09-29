@@ -131,6 +131,122 @@ const purItems = [];
 const retItems = [];
 
 /* ═══════════════════════════════════════════════════════════════════
+   2.1 دليل الحسابات (Chart of Accounts)
+   ═══════════════════════════════════════════════════════════════════ */
+const ACCOUNTS = {
+  cash: {
+    id: 'cash',
+    label: 'كاش بالخزينة',
+    icon: '💵',
+    color: 'var(--green-2)',
+    type: 'asset',
+    order: 1
+  },
+  bank: {
+    id: 'bank',
+    label: 'حساب بنكي',
+    icon: '🏦',
+    color: 'var(--blue-2)',
+    type: 'asset',
+    order: 2
+  },
+  instapay: {
+    id: 'instapay',
+    label: 'إنستا باي',
+    icon: '📱',
+    color: 'var(--purple-2)',
+    type: 'asset',
+    order: 3
+  },
+  vodafone: {
+    id: 'vodafone',
+    label: 'فودافون كاش',
+    icon: '📲',
+    color: '#e60000',
+    type: 'asset',
+    order: 4
+  },
+  orange: {
+    id: 'orange',
+    label: 'أورانج كاش',
+    icon: '📲',
+    color: '#ff7900',
+    type: 'asset',
+    order: 5
+  },
+  etisalat: {
+    id: 'etisalat',
+    label: 'اتصالات كاش',
+    icon: '📲',
+    color: '#7fba00',
+    type: 'asset',
+    order: 6
+  },
+  we: {
+    id: 'we',
+    label: 'WE كاش',
+    icon: '📲',
+    color: '#8b00ff',
+    type: 'asset',
+    order: 7
+  },
+  pos: {
+    id: 'pos',
+    label: 'ماكينة POS',
+    icon: '💳',
+    color: 'var(--orange-2)',
+    type: 'asset',
+    order: 8
+  },
+  postal: {
+    id: 'postal',
+    label: 'حساب بريدي',
+    icon: '📮',
+    color: '#ffcc00',
+    type: 'asset',
+    order: 9
+  }
+};
+
+/**
+ * ⚠️ تحويل اسم طريقة الدفع (النص القديم) لـ ID الحساب
+ * عشان الكود القديم يستمر في العمل
+ */
+function methodToAccountId(method) {
+  if (!method) return 'cash';
+  const m = String(method).trim();
+
+  if (m === 'نقدي' || m === 'كاش' || m === 'نقدا' || m === 'نقداً') return 'cash';
+  if (m === 'بنكي' || m === 'بنك' || m === 'تحويل بنكي') return 'bank';
+  if (m === 'إنستا باي' || m === 'انستا باي' || m === 'InstaPay' || m === 'instapay') return 'instapay';
+  if (m === 'فودافون' || m === 'فودافون كاش' || m === 'Vodafone') return 'vodafone';
+  if (m === 'أورانج' || m === 'اورنج' || m === 'أورانج كاش' || m === 'Orange') return 'orange';
+  if (m === 'اتصالات' || m === 'إتصالات' || m === 'اتصالات كاش' || m === 'Etisalat') return 'etisalat';
+  if (m === 'WE' || m === 'we' || m === 'وي' || m === 'WE كاش') return 'we';
+  if (m === 'ماكينة' || m === 'POS' || m === 'pos' || m === 'ماكينة POS') return 'pos';
+  if (m === 'بريدي' || m === 'حساب بريدي' || m === 'بريد') return 'postal';
+
+  // افتراضي
+  return 'cash';
+}
+
+/**
+ * ⚠️ جلب تفاصيل الحساب
+ */
+function getAccount(id) {
+  return ACCOUNTS[id] || ACCOUNTS.cash;
+}
+
+/**
+ * ⚠️ كل الحسابات كـ array مرتب
+ */
+function getAllAccounts() {
+  return Object.values(ACCOUNTS).sort(function (a, b) {
+    return (a.order || 0) - (b.order || 0);
+  });
+   }
+
+/* ═══════════════════════════════════════════════════════════════════
    3. Permissions System (RBAC)
    ═══════════════════════════════════════════════════════════════════ */
 const PERMISSIONS = {
