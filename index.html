@@ -2635,7 +2635,18 @@ body::after {
       </table>
     </div>
     <div class="invoice-total">
-      <div class="row total"><span>إجمالي المرتجع:</span><span id="retTotal">0.00</span></div>
+      <div class="row"><span>الإجمالي الفرعي:</span><span id="retSubtotal">0.00</span></div>
+<div class="row" style="flex-wrap:wrap;gap:6px;">
+  <span id="retDiscountLabel">الخصم:</span>
+  <div style="display:flex;gap:6px;align-items:center;">
+    <select id="retDiscountType" onchange="Returns.render()" style="width:75px;padding:6px 4px;background:#0a0a0a;border:1px solid var(--border-light);border-radius:8px;color:var(--gold);font-family:inherit;font-weight:700;font-size:12px;text-align:center;">
+      <option value="amount">💰 مبلغ</option>
+      <option value="percent">📊 %</option>
+    </select>
+    <input type="number" id="retDiscount" value="0" step="any" oninput="Returns.render()" onchange="Returns.render()">
+  </div>
+</div>
+<div class="row total"><span>إجمالي المرتجع:</span><span id="retTotal">0.00</span></div>
       <div class="form-group" style="margin-top:12px;">
         <label>طريقة التسوية</label>
         <select id="retSettle">
