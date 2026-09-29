@@ -1600,101 +1600,131 @@ const Export = {
   },
 
   generateHTML(doc, items, docType) {
-    const titles = {
-      sales: '🧾 فاتورة مبيعات', purchase: '📦 فاتورة مشتريات',
-      sales_return: '↩️ مرتجع مبيعات', purchase_return: '↩️ مرتجع مشتريات',
-      voucher_receipt: '🧾 سند قبض', voucher_payment: '🧾 سند دفع',
-      payroll: '💵 مفردات مرتب'
-    };
-    const partyLabels = {
-      sales: 'العميل', purchase: 'المورد',
-      sales_return: 'العميل', purchase_return: 'المورد',
-      voucher_receipt: 'الجهة', voucher_payment: 'الجهة',
-      payroll: 'الموظف'
-    };
-    const title = titles[docType] || '📄 مستند';
-    const partyLabel = partyLabels[docType] || 'الجهة';
-    const partyName = doc.customer_name || doc.supplier_name || doc.party_name || doc.employee_name || '-';
-    const docNo = doc.invoice_no || doc.return_no || doc.voucher_no || ('PAY-' + (doc.month || ''));
+  // ⚠️ تأكد إن doc موجود
+  if (!doc) {
+    console.error('generateHTML: doc is null/undefined');
+    return '<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"></head><body><h1>خطأ: المستند غير موجود</h1></body></html>';
+  }
 
-    let html =
-      '<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">' +
-      '<title>' + docNo + '</title>' +
-      '<style>' +
-        '@page { size: 80mm auto; margin: 3mm; }' +
-        'body { font-family: Cairo, Tahoma, sans-serif; padding: 6px; color: #000; max-width: 74mm; margin: 0 auto; background: #fff; }' +
-        '.header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 8px; margin-bottom: 10px; }' +
-        '.header h1 { color: #B8941F; font-size: 18px; margin: 0 0 4px 0; }' +
-        '.header h2 { color: #000; font-size: 14px; margin: 4px 0; }' +
-        '.header p { font-size: 10px; margin: 2px 0; }' +
-        '.line { display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px; }' +
-        '.items { margin: 8px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 6px 0; }' +
-        '.item { display: flex; justify-content: space-between; font-size: 11px; padding: 3px 0; align-items: center; }' +
-        '.item img { width: 30px; height: 30px; object-fit: cover; border-radius: 4px; margin-left: 4px; }' +
-        '.item-name { flex: 1; display: flex; align-items: center; gap: 4px; }' +
-        '.total { border-top: 2px dashed #000; padding-top: 8px; font-weight: 700; font-size: 13px; margin-top: 6px; }' +
-        '.signature { display: flex; justify-content: space-between; margin-top: 20px; font-size: 10px; }' +
-        '.signature div { text-align: center; border-top: 1px solid #000; padding-top: 4px; width: 40%; }' +
-      '</style></head><body>' +
-      '<div class="header">' +
-        '<h1>🏪 شركة البسملة</h1>' +
-        '<p>لتجارة المشغولات الصينية</p>' +
-        '<h2>' + title + '</h2>' +
-      '</div>' +
-      '<div class="line"><span>رقم:</span><span>' + Utils.esc(docNo) + '</span></div>' +
-      '<div class="line"><span>التاريخ:</span><span>' + Utils.fmtDate(doc.date || doc.created_at) + '</span></div>' +
-      '<div class="line"><span>' + partyLabel + ':</span><span>' + Utils.esc(partyName) + '</span></div>' +
-      '<div class="line"><span>الموظف:</span><span>' + Utils.esc(doc.employee_name || '-') + '</span></div>';
+  // ⚠️ تأكد إن items مصفوفة
+  if (!Array.isArray(items)) {
+    console.warn('generateHTML: items is not an array, converting...', items);
+    items = items ? Object.values(items) : [];
+  }
 
-    if (docType === 'payroll') {
-      html += '<hr style="border:none;border-top:1px dashed #000;margin:8px 0;">' +
-        '<div class="line"><span>أيام العمل:</span><span>' + (doc.work_days || 0) + '</span></div>' +
-        '<div class="line"><span>أيام الحضور:</span><span>' + (doc.attendance_days || 0) + '</span></div>' +
-        '<div class="line"><span>أيام الغياب:</span><span>' + (doc.absence_days || 0) + '</span></div>' +
-        '<hr style="border:none;border-top:1px dashed #000;margin:8px 0;">' +
-        '<div class="line"><span>الأساسي:</span><span>' + Utils.fmtMoney(doc.basic_salary) + '</span></div>' +
-        '<div class="line"><span>بدل سكن:</span><span>' + Utils.fmtMoney(doc.housing_allowance) + '</span></div>' +
-        '<div class="line"><span>بدل مواصلات:</span><span>' + Utils.fmtMoney(doc.transport_allowance) + '</span></div>' +
-        '<div class="line"><span>مكافآت:</span><span>+' + Utils.fmtMoney(doc.bonuses) + '</span></div>' +
-        '<hr style="border:none;border-top:1px dashed #000;margin:8px 0;">' +
-        '<div class="line"><span>خصم غياب:</span><span>-' + Utils.fmtMoney(doc.absence_deduction) + '</span></div>' +
-        '<div class="line"><span>خصم تأخير:</span><span>-' + Utils.fmtMoney(doc.late_deduction || 0) + '</span></div>' +
-        '<div class="line"><span>تأمينات:</span><span>-' + Utils.fmtMoney(doc.insurance_deduction) + '</span></div>' +
-        '<div class="line"><span>ضريبة:</span><span>-' + Utils.fmtMoney(doc.tax_deduction) + '</span></div>' +
-        '<div class="line total"><span>الصافي:</span><span>' + Utils.fmtMoney(doc.net_salary) + '</span></div>';
-    } else if (docType === 'voucher_receipt' || docType === 'voucher_payment') {
-      html += '<hr style="border:none;border-top:1px dashed #000;margin:8px 0;">' +
-        '<div class="line"><span>المبلغ:</span><span>' + Utils.fmtMoney(doc.amount) + '</span></div>' +
-        '<div class="line"><span>طريقة الدفع:</span><span>' + Utils.esc(doc.payment_method || '-') + '</span></div>' +
-        '<div class="line"><span>البيان:</span><span>' + Utils.esc(doc.description || '-') + '</span></div>' +
-        '<div class="line total"><span>الإجمالي:</span><span>' + Utils.fmtMoney(doc.amount) + '</span></div>';
+  const titles = {
+    sales: '🧾 فاتورة مبيعات', purchase: '📦 فاتورة مشتريات',
+    sales_return: '↩️ مرتجع مبيعات', purchase_return: '↩️ مرتجع مشتريات',
+    voucher_receipt: '🧾 سند قبض', voucher_payment: '🧾 سند دفع',
+    payroll: '💵 مفردات مرتب'
+  };
+  const partyLabels = {
+    sales: 'العميل', purchase: 'المورد',
+    sales_return: 'العميل', purchase_return: 'المورد',
+    voucher_receipt: 'الجهة', voucher_payment: 'الجهة',
+    payroll: 'الموظف'
+  };
+  const title = titles[docType] || '📄 مستند';
+  const partyLabel = partyLabels[docType] || 'الجهة';
+  const partyName = doc.customer_name || doc.supplier_name || doc.party_name || doc.employee_name || '-';
+  const docNo = doc.invoice_no || doc.return_no || doc.voucher_no || ('PAY-' + (doc.month || ''));
+
+  // ⚠️ تسجيل للتصحيح
+  console.log('generateHTML:', {
+    docType: docType,
+    docNo: docNo,
+    itemsCount: items.length,
+    itemsSample: items.slice(0, 2)
+  });
+
+  let html =
+    '<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">' +
+    '<title>' + docNo + '</title>' +
+    '<style>' +
+      '@page { size: 80mm auto; margin: 3mm; }' +
+      'body { font-family: Cairo, Tahoma, sans-serif; padding: 6px; color: #000; max-width: 74mm; margin: 0 auto; background: #fff; }' +
+      '.header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 8px; margin-bottom: 10px; }' +
+      '.header h1 { color: #B8941F; font-size: 18px; margin: 0 0 4px 0; }' +
+      '.header h2 { color: #000; font-size: 14px; margin: 4px 0; }' +
+      '.header p { font-size: 10px; margin: 2px 0; }' +
+      '.line { display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px; }' +
+      '.items { margin: 8px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 6px 0; }' +
+      '.item { display: flex; justify-content: space-between; font-size: 11px; padding: 3px 0; align-items: center; }' +
+      '.item img { width: 30px; height: 30px; object-fit: cover; border-radius: 4px; margin-left: 4px; }' +
+      '.item-name { flex: 1; display: flex; align-items: center; gap: 4px; }' +
+      '.total { border-top: 2px dashed #000; padding-top: 8px; font-weight: 700; font-size: 13px; margin-top: 6px; }' +
+      '.signature { display: flex; justify-content: space-between; margin-top: 20px; font-size: 10px; }' +
+      '.signature div { text-align: center; border-top: 1px solid #000; padding-top: 4px; width: 40%; }' +
+      '.empty-items { text-align: center; padding: 10px; color: #666; font-style: italic; }' +
+    '</style></head><body>' +
+    '<div class="header">' +
+      '<h1>🏪 شركة البسملة</h1>' +
+      '<p>لتجارة المشغولات الصينية</p>' +
+      '<h2>' + title + '</h2>' +
+    '</div>' +
+    '<div class="line"><span>رقم:</span><span>' + Utils.esc(docNo) + '</span></div>' +
+    '<div class="line"><span>التاريخ:</span><span>' + Utils.fmtDate(doc.date || doc.created_at) + '</span></div>' +
+    '<div class="line"><span>' + partyLabel + ':</span><span>' + Utils.esc(partyName) + '</span></div>' +
+    '<div class="line"><span>الموظف:</span><span>' + Utils.esc(doc.employee_name || '-') + '</span></div>';
+
+  if (docType === 'payroll') {
+    html += '<hr style="border:none;border-top:1px dashed #000;margin:8px 0;">' +
+      '<div class="line"><span>أيام العمل:</span><span>' + (doc.work_days || 0) + '</span></div>' +
+      '<div class="line"><span>أيام الحضور:</span><span>' + (doc.attendance_days || 0) + '</span></div>' +
+      '<div class="line"><span>أيام الغياب:</span><span>' + (doc.absence_days || 0) + '</span></div>' +
+      '<hr style="border:none;border-top:1px dashed #000;margin:8px 0;">' +
+      '<div class="line"><span>الأساسي:</span><span>' + Utils.fmtMoney(doc.basic_salary) + '</span></div>' +
+      '<div class="line"><span>بدل سكن:</span><span>' + Utils.fmtMoney(doc.housing_allowance) + '</span></div>' +
+      '<div class="line"><span>بدل مواصلات:</span><span>' + Utils.fmtMoney(doc.transport_allowance) + '</span></div>' +
+      '<div class="line"><span>مكافآت:</span><span>+' + Utils.fmtMoney(doc.bonuses) + '</span></div>' +
+      '<hr style="border:none;border-top:1px dashed #000;margin:8px 0;">' +
+      '<div class="line"><span>خصم غياب:</span><span>-' + Utils.fmtMoney(doc.absence_deduction) + '</span></div>' +
+      '<div class="line"><span>خصم تأخير:</span><span>-' + Utils.fmtMoney(doc.late_deduction || 0) + '</span></div>' +
+      '<div class="line"><span>تأمينات:</span><span>-' + Utils.fmtMoney(doc.insurance_deduction) + '</span></div>' +
+      '<div class="line"><span>ضريبة:</span><span>-' + Utils.fmtMoney(doc.tax_deduction) + '</span></div>' +
+      '<div class="line total"><span>الصافي:</span><span>' + Utils.fmtMoney(doc.net_salary) + '</span></div>';
+  } else if (docType === 'voucher_receipt' || docType === 'voucher_payment') {
+    html += '<hr style="border:none;border-top:1px dashed #000;margin:8px 0;">' +
+      '<div class="line"><span>المبلغ:</span><span>' + Utils.fmtMoney(doc.amount) + '</span></div>' +
+      '<div class="line"><span>طريقة الدفع:</span><span>' + Utils.esc(doc.payment_method || '-') + '</span></div>' +
+      '<div class="line"><span>البيان:</span><span>' + Utils.esc(doc.description || '-') + '</span></div>' +
+      '<div class="line total"><span>الإجمالي:</span><span>' + Utils.fmtMoney(doc.amount) + '</span></div>';
+  } else {
+    // فواتير بيع / شراء / مرتجعات
+    html += '<div class="items">';
+
+    if (items.length === 0) {
+      // ⚠️ لو مفيش أصناف، نعرض رسالة
+      html += '<div class="empty-items">⚠️ لا توجد أصناف مسجلة</div>';
     } else {
-      html += '<div class="items">';
       for (const it of items) {
+        if (!it) continue;
         // ⚠️ صورة المنتج في الفاتورة
-        const product = (cache.products || []).find(function (x) { return x.id === it.product_id; });
+        const product = (cache.products || []).find(function (x) { return x && x.id === it.product_id; });
         const imgTag = product && product.image
           ? '<img src="' + product.image + '" style="width:30px;height:30px;object-fit:cover;border-radius:4px;">'
           : '';
         html += '<div class="item">' +
           '<span class="item-name">' + imgTag + ' ' + Utils.esc(it.product_name || it.name || 'صنف') + '</span>' +
-          '<span>' + it.quantity + ' × ' + Utils.fmtMoney(it.price) + ' = ' + Utils.fmtMoney(it.total) + '</span>' +
+          '<span>' + (it.quantity || 0) + ' × ' + Utils.fmtMoney(it.price) + ' = ' + Utils.fmtMoney(it.total) + '</span>' +
         '</div>';
       }
-      html += '</div>' +
-        '<div class="line"><span>الإجمالي الفرعي:</span><span>' + Utils.fmtMoney(doc.subtotal) + '</span></div>' +
-        '<div class="line"><span>الخصم:</span><span>' + Utils.fmtMoney(doc.discount || 0) + '</span></div>' +
-        '<div class="line"><span>الضريبة:</span><span>' + Utils.fmtMoney(doc.tax || 0) + '</span></div>' +
-        '<div class="line total"><span>الإجمالي:</span><span>' + Utils.fmtMoney(doc.total) + '</span></div>' +
-        '<div class="line"><span>المدفوع:</span><span>' + Utils.fmtMoney(doc.paid || 0) + '</span></div>' +
-        '<div class="line"><span>الباقي:</span><span>' + Utils.fmtMoney(doc.remaining || 0) + '</span></div>';
     }
 
-    html += '<div class="signature"><div>توقيع البائع</div><div>توقيع المستلم</div></div>' +
-      '<div style="text-align:center;font-size:10px;margin-top:12px;">شكراً لتعاملكم معنا<br>© شركة البسملة ' + new Date().getFullYear() + '</div>' +
-      '</body></html>';
-    return html;
-  },
+    html += '</div>' +
+      '<div class="line"><span>الإجمالي الفرعي:</span><span>' + Utils.fmtMoney(doc.subtotal) + '</span></div>' +
+      '<div class="line"><span>الخصم:</span><span>' + Utils.fmtMoney(doc.discount || 0) + '</span></div>' +
+      '<div class="line"><span>الضريبة:</span><span>' + Utils.fmtMoney(doc.tax || 0) + '</span></div>' +
+      '<div class="line total"><span>الإجمالي:</span><span>' + Utils.fmtMoney(doc.total) + '</span></div>' +
+      '<div class="line"><span>المدفوع:</span><span>' + Utils.fmtMoney(doc.paid || 0) + '</span></div>' +
+      '<div class="line"><span>الباقي:</span><span>' + Utils.fmtMoney(doc.remaining || 0) + '</span></div>';
+  }
+
+  html += '<div class="signature"><div>توقيع البائع</div><div>توقيع المستلم</div></div>' +
+    '<div style="text-align:center;font-size:10px;margin-top:12px;">شكراً لتعاملكم معنا<br>© شركة البسملة ' + new Date().getFullYear() + '</div>' +
+    '</body></html>';
+  return html;
+},
 
 async toPDF(doc, items, docType) {
   Toast.show('⏳ جاري تجهيز PDF...', 'info');
