@@ -4528,28 +4528,67 @@ const Returns = {
   },
 
   render() {
-    const body = document.getElementById('retItemsBody');
-    if (!body) return;
-    if (retItems.length === 0) {
-      body.innerHTML = '<tr><td colspan="5" style="padding:20px;color:#666;">لا توجد أصناف</td></tr>';
+  const body = document.getElementById('retItemsBody');
+  if (!body) return;
+
+  if (retItems.length === 0) {
+    body.innerHTML = '<tr><td colspan="5" style="padding:20px;color:#666;">لا توجد أصناف</td></tr>';
+  } else {
+    body.innerHTML = retItems.map(function (it, i) {
+      const imgHtml = it.image
+        ? '<img src="' + it.image + '" style="width:30px;height:30px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-left:4px;">'
+        : '';
+      return '<tr>' +
+        '<td>' + imgHtml + Utils.esc(it.name) + '</td>' +
+        '<td><input type="number" value="' + it.quantity + '" min="1" onchange="Returns.updateQty(' + i + ',this.value)" oninput="Returns.updateQty(' + i + ',this.value)"></td>' +
+        '<td><input type="number" value="' + it.price + '" onchange="Returns.updatePrice(' + i + ',this.value)" oninput="Returns.updatePrice(' + i + ',this.value)"></td>' +
+        '<td>' + (it.quantity * it.price).toFixed(2) + '</td>' +
+        '<td><button class="btn btn-danger btn-sm" onclick="Returns.removeItem(' + i + ')">×</button></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  // ⚠️ حساب المجموع الفرعي
+  const sub = retItems.reduce(function (s, it) {
+    return s + (Number(it.quantity) || 0) * (Number(it.price) || 0);
+  }, 0);
+
+  // ⚠️ قراءة الخصم (مبلغ أو نسبة)
+  const discTypeEl = document.getElementById('retDiscountType');
+  const discEl = document.getElementById('retDiscount');
+  const discType = discTypeEl ? discTypeEl.value : 'amount';
+  const discValue = discEl ? (parseFloat(discEl.value) || 0) : 0;
+
+  let disc = 0;
+  if (discType === 'percent') {
+    disc = sub * (discValue / 100);
+  } else {
+    disc = discValue;
+  }
+
+  // ⚠️ حماية
+  if (disc > sub) disc = sub;
+  if (disc < 0) disc = 0;
+
+  const total = sub - disc;
+
+  // ⚠️ عرض المجموع الفرعي والإجمالي
+  const subEl = document.getElementById('retSubtotal');
+  if (subEl) subEl.textContent = Utils.fmtMoney(sub);
+
+  const totalEl = document.getElementById('retTotal');
+  if (totalEl) totalEl.textContent = Utils.fmtMoney(total);
+
+  // ⚠️ عرض المبلغ الفعلي للخصم لو كان نسبة
+  const discLabelEl = document.getElementById('retDiscountLabel');
+  if (discLabelEl) {
+    if (discType === 'percent' && discValue > 0) {
+      discLabelEl.textContent = 'الخصم (' + discValue + '%):';
     } else {
-      body.innerHTML = retItems.map(function (it, i) {
-        const imgHtml = it.image
-          ? '<img src="' + it.image + '" style="width:30px;height:30px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-left:4px;">'
-          : '';
-        return '<tr>' +
-          '<td>' + imgHtml + Utils.esc(it.name) + '</td>' +
-          '<td><input type="number" value="' + it.quantity + '" min="1" onchange="Returns.updateQty(' + i + ',this.value)" oninput="Returns.updateQty(' + i + ',this.value)"></td>' +
-          '<td><input type="number" value="' + it.price + '" onchange="Returns.updatePrice(' + i + ',this.value)" oninput="Returns.updatePrice(' + i + ',this.value)"></td>' +
-          '<td>' + (it.quantity * it.price).toFixed(2) + '</td>' +
-          '<td><button class="btn btn-danger btn-sm" onclick="Returns.removeItem(' + i + ')">×</button></td>' +
-        '</tr>';
-      }).join('');
+      discLabelEl.textContent = 'الخصم:';
     }
-    const total = retItems.reduce(function (s, it) { return s + (Number(it.quantity) || 0) * (Number(it.price) || 0); }, 0);
-    const totalEl = document.getElementById('retTotal');
-    if (totalEl) totalEl.textContent = Utils.fmtMoney(total);
-  },
+  }
+},
 
   updateQty(i, v) {
     const qty = parseInt(v) || 1;
@@ -4567,100 +4606,128 @@ const Returns = {
     Returns.render();
   },
 
-  async save() {
-    if (!requirePermission('returns_create', 'إنشاء مرتجع')) return;
-    const partyId = document.getElementById('retParty').value;
-    if (!partyId) return Toast.show('اختر الجهة', 'error');
-    if (retItems.length === 0) return Toast.show('أضف أصناف', 'error');
+async save() {
+  if (!requirePermission('returns_create', 'إنشاء مرتجع')) return;
+  const partyId = document.getElementById('retParty').value;
+  if (!partyId) return Toast.show('اختر الجهة', 'error');
+  if (retItems.length === 0) return Toast.show('أضف أصناف', 'error');
 
-    const verified = await Biometric.verify('تأكيد المرتجع');
-    if (!verified) return Toast.show('فشل التحقق', 'error');
+  const verified = await Biometric.verify('تأكيد المرتجع');
+  if (!verified) return Toast.show('فشل التحقق', 'error');
 
-    const isSales = State.currentReturnTab === 'sales';
-    const settle = document.getElementById('retSettle').value;
-    const reason = document.getElementById('retReason').value;
-    const total = retItems.reduce(function (s, it) { return s + it.quantity * it.price; }, 0);
-    const returnId = Utils.genId(isSales ? 'SR' : 'PR');
-    const returnNo = (isSales ? 'SR-' : 'PR-') + Date.now();
-    const now = Utils.nowISO();
+  const isSales = State.currentReturnTab === 'sales';
+  const settle = document.getElementById('retSettle').value;
+  const reason = document.getElementById('retReason').value;
 
-    for (const it of retItems) {
-      const p = (cache.products || []).find(function (x) { return x.id === it.product_id; });
-      const change = isSales ? it.quantity : -it.quantity;
-      p.quantity = (Number(p.quantity) || 0) + change;
-      await Sync.save('products', p.id, p);
-      const moveId = Utils.genId('SM');
-      await Sync.save('stock_movements', moveId, {
-        id: moveId, product_id: it.product_id,
-        type: isSales ? 'return_in' : 'return_out',
-        quantity: it.quantity, balance_after: p.quantity,
-        reference: returnNo, date: now, notes: reason,
-        employee_name: State.currentEmployee.name
-      });
-    }
+  // ⚠️ حساب المجموع الفرعي
+  const sub = retItems.reduce(function (s, it) {
+    return s + (Number(it.quantity) || 0) * (Number(it.price) || 0);
+  }, 0);
 
-    const store = isSales ? 'sales_returns' : 'purchase_returns';
-    const partyName = (cache.partners || []).find(function (x) { return x.id === partyId; })
-      ? (cache.partners || []).find(function (x) { return x.id === partyId; }).name : '';
-    const retData = {
-      id: returnId, return_no: returnNo, party_name: partyName,
+  // ⚠️ قراءة الخصم (مبلغ أو نسبة)
+  const discTypeEl = document.getElementById('retDiscountType');
+  const discEl = document.getElementById('retDiscount');
+  const discType = discTypeEl ? discTypeEl.value : 'amount';
+  const discValue = discEl ? (parseFloat(discEl.value) || 0) : 0;
+
+  let disc = 0;
+  if (discType === 'percent') {
+    disc = sub * (discValue / 100);
+  } else {
+    disc = discValue;
+  }
+  if (disc > sub) disc = sub;
+  if (disc < 0) disc = 0;
+
+  const total = sub - disc;
+
+  const returnId = Utils.genId(isSales ? 'SR' : 'PR');
+  const returnNo = (isSales ? 'SR-' : 'PR-') + Date.now();
+  const now = Utils.nowISO();
+
+  for (const it of retItems) {
+    const p = (cache.products || []).find(function (x) { return x.id === it.product_id; });
+    const change = isSales ? it.quantity : -it.quantity;
+    p.quantity = (Number(p.quantity) || 0) + change;
+    await Sync.save('products', p.id, p);
+    const moveId = Utils.genId('SM');
+    await Sync.save('stock_movements', moveId, {
+      id: moveId, product_id: it.product_id,
+      type: isSales ? 'return_in' : 'return_out',
+      quantity: it.quantity, balance_after: p.quantity,
+      reference: returnNo, date: now, notes: reason,
+      employee_name: State.currentEmployee.name
+    });
+  }
+
+  const store = isSales ? 'sales_returns' : 'purchase_returns';
+  const partyName = (cache.partners || []).find(function (x) { return x.id === partyId; })
+    ? (cache.partners || []).find(function (x) { return x.id === partyId; }).name : '';
+  const retData = {
+    id: returnId, return_no: returnNo, party_name: partyName,
+    employee_uid: State.currentUser.uid,
+    employee_name: State.currentEmployee.name,
+    date: now,
+    subtotal: sub,
+    discount_type: discType,
+    discount_value: discValue,
+    discount: disc,
+    total: total,
+    reason: reason,
+    settlement: settle, created_at: now
+  };
+  if (isSales) retData.customer_id = partyId;
+  else retData.supplier_id = partyId;
+  await Sync.save(store, returnId, retData);
+
+  const itemsStore = isSales ? 'sales_return_items' : 'purchase_return_items';
+  for (const it of retItems) {
+    const iid = Utils.genId('RI');
+    await Sync.save(itemsStore, iid, {
+      id: iid, return_id: returnId, product_id: it.product_id,
+      product_name: it.name, quantity: it.quantity,
+      price: it.price, total: it.quantity * it.price
+    });
+  }
+
+  const party = (cache.partners || []).find(function (x) { return x.id === partyId; });
+  if (party) {
+    party.balance = (Number(party.balance) || 0) - total;
+    await Sync.save('partners', partyId, party);
+  }
+
+  if (settle === 'refund') {
+    const voucherType = isSales ? 'payment' : 'receipt';
+    const voucherId = Utils.genId(isSales ? 'PAY' : 'RCV');
+    const voucherNo = (isSales ? 'PAY-' : 'RCV-') + Date.now();
+    await Sync.save('vouchers', voucherId, {
+      id: voucherId, voucher_no: voucherNo, type: voucherType,
+      amount: total, partner_id: partyId,
       employee_uid: State.currentUser.uid,
       employee_name: State.currentEmployee.name,
-      date: now, total: total, reason: reason,
-      settlement: settle, created_at: now
-    };
-    if (isSales) retData.customer_id = partyId;
-    else retData.supplier_id = partyId;
-    await Sync.save(store, returnId, retData);
+      date: now, payment_method: 'نقدي',
+      description: (isSales ? 'استرداد مرتجع ' : 'استرداد مرتجع مشتريات ') + returnNo,
+      reference: returnNo, auto_generated: true, created_at: now
+    });
+    const cashId = Utils.genId('CSH');
+    await Sync.save('cash_transactions', cashId, {
+      id: cashId, type: isSales ? 'out' : 'in', amount: total, reference: voucherNo,
+      description: (isSales ? 'استرداد مرتجع مبيعات ' : 'استرداد مرتجع مشتريات ') + returnNo,
+      category: isSales ? 'مرتجع مبيعات' : 'مرتجع مشتريات',
+      date: now, employee_name: State.currentEmployee.name,
+      partner_id: partyId, payment_method: 'نقدي'
+    });
+  }
 
-    const itemsStore = isSales ? 'sales_return_items' : 'purchase_return_items';
-    for (const it of retItems) {
-      const iid = Utils.genId('RI');
-      await Sync.save(itemsStore, iid, {
-        id: iid, return_id: returnId, product_id: it.product_id,
-        product_name: it.name, quantity: it.quantity,
-        price: it.price, total: it.quantity * it.price
-      });
-    }
+  await Activity.log('return', returnNo + ' - ' + Utils.fmtMoney(total));
+  Toast.show('✅ تم تسجيل المرتجع');
 
-    const party = (cache.partners || []).find(function (x) { return x.id === partyId; });
-    if (party) {
-      party.balance = (Number(party.balance) || 0) - total;
-      await Sync.save('partners', partyId, party);
-    }
-
-    if (settle === 'refund') {
-      const voucherType = isSales ? 'payment' : 'receipt';
-      const voucherId = Utils.genId(isSales ? 'PAY' : 'RCV');
-      const voucherNo = (isSales ? 'PAY-' : 'RCV-') + Date.now();
-      await Sync.save('vouchers', voucherId, {
-        id: voucherId, voucher_no: voucherNo, type: voucherType,
-        amount: total, partner_id: partyId,
-        employee_uid: State.currentUser.uid,
-        employee_name: State.currentEmployee.name,
-        date: now, payment_method: 'نقدي',
-        description: (isSales ? 'استرداد مرتجع ' : 'استرداد مرتجع مشتريات ') + returnNo,
-        reference: returnNo, auto_generated: true, created_at: now
-      });
-      const cashId = Utils.genId('CSH');
-      await Sync.save('cash_transactions', cashId, {
-        id: cashId, type: isSales ? 'out' : 'in', amount: total, reference: voucherNo,
-        description: (isSales ? 'استرداد مرتجع مبيعات ' : 'استرداد مرتجع مشتريات ') + returnNo,
-        category: isSales ? 'مرتجع مبيعات' : 'مرتجع مشتريات',
-        date: now, employee_name: State.currentEmployee.name,
-        partner_id: partyId, payment_method: 'نقدي'
-      });
-    }
-
-    await Activity.log('return', returnNo + ' - ' + Utils.fmtMoney(total));
-    Toast.show('✅ تم تسجيل المرتجع');
-
-    retItems.length = 0;
-    State._returnFormActive = false;
-    State._initialized.returns = false;
-    Returns.init();
-    setTimeout(function () { Invoices.show(returnId, isSales ? 'sales_return' : 'purchase_return'); }, 300);
-  },
+  retItems.length = 0;
+  State._returnFormActive = false;
+  State._initialized.returns = false;
+  Returns.init();
+  setTimeout(function () { Invoices.show(returnId, isSales ? 'sales_return' : 'purchase_return'); }, 300);
+},
 
   loadList() {
     const isSales = State.currentReturnTab === 'sales';
