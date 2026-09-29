@@ -2094,16 +2094,27 @@ const Auth = {
 
   watchApproval(uid) {
   if (!State.currentCompanyId) return;
+
   const ref = FBDB.ref('companies/' + State.currentCompanyId + '/employees/' + uid);
 
   const callback = function (snap) {
     if (snap.exists() && snap.val().active === true) {
+      // ⚠️ نشيل الـ listener بعد ما يوافق
       ref.off('value', callback);
+
+      // ⚠️ نحدّث حالة الجهاز
       FBDB.ref('companies/' + State.currentCompanyId + '/devices/' + State.deviceId).update({
-        approved: true, status: 'approved', approved_at: Utils.nowISO()
+        approved: true,
+        status: 'approved',
+        approved_at: Utils.nowISO()
       });
+
       Toast.show('✅ تمت الموافقة!');
-      setTimeout(function () { App.loadCompanyData(); }, 800);
+
+      // ⚠️ نعيد تحميل البيانات بعد لحظة
+      setTimeout(function () {
+        App.loadCompanyData();
+      }, 800);
     }
   };
 
