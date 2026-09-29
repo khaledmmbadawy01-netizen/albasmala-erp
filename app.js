@@ -4907,68 +4907,129 @@ const Invoices = {
 
   async pay(invId, type) {
     if (!requirePermission('vouchers_create', 'سداد')) return;
+
     const store = type === 'sales' ? 'sales_invoices' : 'purchase_invoices';
     const inv = (cache[store] || []).find(function (x) { return x.id === invId; });
     if (!inv) return;
+
     const remaining = Number(inv.remaining) || 0;
-    if (remaining <= 0) return Toast.show('مسددة', 'error');
+    if (remaining <= 0) return Toast.show('الفاتورة مسددة بالكامل', 'error');
+
     const partyId = type === 'sales' ? inv.customer_id : inv.supplier_id;
     const party = (cache.partners || []).find(function (x) { return x.id === partyId; });
 
     const html =
-      '<div style="margin-bottom:12px;padding:10px;background:rgba(212,175,55,.08);border-radius:8px;">' +
-        '<div style="display:flex;justify-content:space-between;padding:4px 0;"><span>الجهة:</span><strong>' + Utils.esc(party ? party.name : '-') + '</strong></div>' +
-        '<div style="display:flex;justify-content:space-between;padding:4px 0;"><span>الإجمالي:</span><strong>' + Utils.fmtMoney(inv.total) + '</strong></div>' +
-        '<div style="display:flex;justify-content:space-between;padding:4px 0;"><span>المدفوع:</span><strong>' + Utils.fmtMoney(inv.paid) + '</strong></div>' +
-        '<div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--red-2);"><span>المتبقي:</span><strong>' + Utils.fmtMoney(remaining) + '</strong></div>' +
+      '<div style="margin-bottom:14px;padding:12px;background:rgba(212,175,55,.08);border-radius:10px;border:1px solid rgba(212,175,55,.2);">' +
+        '<div style="display:flex;justify-content:space-between;padding:6px 0;"><span>الجهة:</span><strong>' + Utils.esc(party ? party.name : '-') + '</strong></div>' +
+        '<div style="display:flex;justify-content:space-between;padding:6px 0;"><span>رقم الفاتورة:</span><strong>' + Utils.esc(inv.invoice_no) + '</strong></div>' +
+        '<div style="display:flex;justify-content:space-between;padding:6px 0;"><span>إجمالي الفاتورة:</span><strong>' + Utils.fmtMoney(inv.total) + '</strong></div>' +
+        '<div style="display:flex;justify-content:space-between;padding:6px 0;"><span>المدفوع سابقاً:</span><strong style="color:var(--green-2);">' + Utils.fmtMoney(inv.paid) + '</strong></div>' +
+        '<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px dashed rgba(212,175,55,.3);margin-top:4px;padding-top:8px;"><span>المتبقي:</span><strong style="color:var(--red-2);">' + Utils.fmtMoney(remaining) + '</strong></div>' +
       '</div>' +
-      '<div class="form-group"><label>المبلغ</label><input type="number" id="pay_amount" value="' + remaining + '" max="' + remaining + '"></div>' +
-      '<div class="form-group"><label>طريقة الدفع</label><select id="pay_method"><option>نقدي</option><option>بنكي</option><option>محفظة</option></select></div>';
+      '<div class="form-group"><label>المبلغ المُسدد *</label><input type="number" id="pay_amount" value="' + remaining + '" max="' + remaining + '" step="any"></div>' +
+      '<div class="form-group"><label>طريقة الدفع *</label>' +
+        '<select id="pay_method">' +
+          '<option value="نقدي">💵 نقدي</option>' +
+          '<option value="بنكي">🏦 بنكي</option>' +
+          '<option value="إنستا باي">📱 إنستا باي</option>' +
+          '<option value="محفظة إلكترونية">📲 محفظة إلكترونية</option>' +
+          '<option value="شيك">🧾 شيك</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="form-group"><label>ملاحظات (اختياري)</label><input id="pay_notes" placeholder="مثال: دفعة أولى"></div>' +
+      '<div class="info-box" style="font-size:12px;">💡 سيتم إنشاء سند قبض/دفع تلقائياً وتسجيل الحركة في الخزينة.</div>';
 
-    Modal.open('💳 سداد فاتورة ' + inv.invoice_no, html, async function () {
-      const amount = parseFloat(document.getElementById('pay_amount').value) || 0;
-      if (amount <= 0 || amount > remaining) return Toast.show('مبلغ غير صالح', 'error');
-      const verified = await Biometric.verify('تأكيد السداد');
-      if (!verified) return Toast.show('فشل', 'error');
-      const method = document.getElementById('pay_method').value;
-      const now = Utils.nowISO();
+    Modal.open(
+      (type === 'sales' ? '💳 تحصيل من ' : '💳 سداد لـ ') + (party ? party.name : ''),
+      html,
+      async function () {
+        const amountEl = document.getElementById('pay_amount');
+        const methodEl = document.getElementById('pay_method');
+        const notesEl = document.getElementById('pay_notes');
 
-      inv.paid = (Number(inv.paid) || 0) + amount;
-      inv.remaining = Number(inv.total) - inv.paid;
-      await Sync.save(store, invId, inv);
+        const amount = parseFloat(amountEl.value) || 0;
+        const method = methodEl.value;
+        const notes = notesEl ? notesEl.value.trim() : '';
 
-      const voucherId = Utils.genId(type === 'sales' ? 'RCV' : 'PAY');
-      const voucherNo = (type === 'sales' ? 'RCV-' : 'PAY-') + Date.now();
-      await Sync.save('vouchers', voucherId, {
-        id: voucherId, voucher_no: voucherNo,
-        type: type === 'sales' ? 'receipt' : 'payment',
-        amount: amount, partner_id: partyId,
-        employee_uid: State.currentUser.uid,
-        employee_name: State.currentEmployee.name,
-        date: now, payment_method: method,
-        description: 'سداد فاتورة ' + inv.invoice_no,
-        reference: inv.invoice_no, auto_generated: true, created_at: now
-      });
+        // ⚠️ التحقق من المبلغ
+        if (amount <= 0) return Toast.show('أدخل مبلغ صحيح', 'error');
+        if (amount > remaining + 0.01) return Toast.show('المبلغ أكبر من المتبقي (' + Utils.fmtMoney(remaining) + ')', 'error');
 
-      const cashId = Utils.genId('CSH');
-      await Sync.save('cash_transactions', cashId, {
-        id: cashId, type: type === 'sales' ? 'in' : 'out',
-        amount: amount, reference: voucherNo,
-        description: 'سداد فاتورة ' + inv.invoice_no,
-        category: type === 'sales' ? 'تحصيل مبيعات' : 'سداد مشتريات',
-        date: now, employee_name: State.currentEmployee.name,
-        partner_id: partyId, payment_method: method
-      });
+        // ⚠️ تأكيد هوية
+        const verified = await Biometric.verify('تأكيد السداد');
+        if (!verified) return Toast.show('❌ فشل التحقق', 'error');
 
-      if (party) {
-        party.balance = (Number(party.balance) || 0) - amount;
-        await Sync.save('partners', partyId, party);
-      }
+        const now = Utils.nowISO();
 
-      Modal.close();
-      Toast.show('✅ تم السداد');
-      await Activity.log('payment', inv.invoice_no + ' - ' + Utils.fmtMoney(amount));
-    });
+        // ⚠️ 1. تحديث الفاتورة
+        inv.paid = (Number(inv.paid) || 0) + amount;
+        inv.remaining = Math.max(0, Number(inv.total) - inv.paid);
+        await Sync.save(store, invId, inv);
+
+        // ⚠️ 2. إنشاء سند قبض/دفع
+        const voucherId = Utils.genId(type === 'sales' ? 'RCV' : 'PAY');
+        const voucherNo = (type === 'sales' ? 'RCV-' : 'PAY-') + Date.now();
+        const voucherData = {
+          id: voucherId,
+          voucher_no: voucherNo,
+          type: type === 'sales' ? 'receipt' : 'payment',
+          amount: amount,
+          partner_id: partyId,
+          partner_name: party ? party.name : '',
+          employee_uid: State.currentUser.uid,
+          employee_name: State.currentEmployee.name,
+          issued_by_name: State.currentEmployee.name,
+          date: now,
+          payment_method: method,
+          description: (type === 'sales' ? 'تحصيل فاتورة ' : 'سداد فاتورة ') + inv.invoice_no + (notes ? ' - ' + notes : ''),
+          reference: inv.invoice_no,
+          auto_generated: true,
+          invoice_id: invId,
+          invoice_type: type,
+          created_at: now
+        };
+        await Sync.save('vouchers', voucherId, voucherData);
+
+        // ⚠️ 3. حركة الخزينة
+        const cashId = Utils.genId('CSH');
+        await Sync.save('cash_transactions', cashId, {
+          id: cashId,
+          type: type === 'sales' ? 'in' : 'out',
+          amount: amount,
+          reference: voucherNo,
+          description: (type === 'sales' ? 'تحصيل فاتورة ' : 'سداد فاتورة ') + inv.invoice_no + (notes ? ' - ' + notes : ''),
+          category: type === 'sales' ? 'تحصيل مبيعات' : 'سداد مشتريات',
+          date: now,
+          employee_name: State.currentEmployee.name,
+          partner_id: partyId,
+          partner_name: party ? party.name : '',
+          payment_method: method,
+          voucher_id: voucherId,
+          invoice_id: invId
+        });
+
+        // ⚠️ 4. تحديث رصيد الجهة
+        if (party) {
+          party.balance = (Number(party.balance) || 0) - amount;
+          await Sync.save('partners', partyId, party);
+        }
+
+        // ⚠️ 5. تسجيل النشاط
+        await Activity.log(
+          type === 'sales' ? 'voucher_receipt' : 'voucher_payment',
+          voucherNo + ' - ' + Utils.fmtMoney(amount) + ' - ' + (party ? party.name : '')
+        );
+
+        Modal.close();
+        Toast.show('✅ تم السداد: ' + Utils.fmtMoney(amount));
+
+        // ⚠️ إعادة تحميل الفواتير
+        setTimeout(function () {
+          Invoices.render();
+        }, 500);
+      },
+      'إغلاق'
+    );
   }
 };
 
