@@ -5368,89 +5368,154 @@ const Vouchers = {
   },
 
   async create() {
-    if (!requirePermission('vouchers_create', 'إنشاء سند')) return;
-    const type = State.currentVoucherTab;
-    const partners = (cache.partners || []).filter(function (p) { return p.active !== false; });
-    const emps = (cache.employees || []).filter(function (e) { return e.active !== false; });
-    const label = type === 'receipt' ? 'قبض' : 'دفع';
-    const color = type === 'receipt' ? 'var(--green-2)' : 'var(--red-2)';
+  if (!requirePermission('vouchers_create', 'إنشاء سند')) return;
 
-    const html =
-      '<div class="form-group"><label>المبلغ *</label><input id="v_amount" type="number" inputmode="decimal"></div>' +
-      '<div class="form-group"><label>الجهة (اختياري)</label><select id="v_partner">' +
-        '<option value="">-- بدون جهة --</option>' +
-        '<optgroup label="العملاء والموردون">' +
-          partners.map(function (p) { return '<option value="' + p.id + '">' + Utils.esc(p.name) + ' (' + (p.type === 'customer' ? 'عميل' : 'مورد') + ')</option>'; }).join('') +
-        '</optgroup>' +
-        '<optgroup label="الموظفون">' +
-          emps.map(function (e) { return '<option value="emp_' + e.uid + '">' + Utils.esc(e.name) + ' (موظف)</option>'; }).join('') +
-        '</optgroup>' +
-      '</select></div>' +
-      '<div class="form-group"><label>طريقة الدفع</label><select id="v_method"><option>نقدي</option><option>بنكي</option><option>محفظة</option></select></div>' +
-      '<div class="form-group"><label>البيان</label><input id="v_desc" placeholder="وصف السند"></div>' +
-      '<p style="color:' + color + ';font-size:13px;padding:10px;background:rgba(255,255,255,.05);border-radius:8px;">' +
-        (type === 'receipt' ? '⬇️ إضافة للخزينة' : '⬆️ خصم من الخزينة') + '</p>';
+  const type = State.currentVoucherTab;
+  const partners = (cache.partners || []).filter(function (p) { return p.active !== false; });
+  const emps = (cache.employees || []).filter(function (e) { return e.active !== false; });
+  const label = type === 'receipt' ? 'قبض' : 'دفع';
+  const color = type === 'receipt' ? 'var(--green-2)' : 'var(--red-2)';
 
-    Modal.open('🧾 سند ' + label, html, async function () {
-      const amount = parseFloat(document.getElementById('v_amount').value);
-      if (!amount || amount <= 0) return Toast.show('مبلغ غير صالح', 'error');
-      const rawPartner = document.getElementById('v_partner').value || null;
-      const method = document.getElementById('v_method').value;
-      const desc = document.getElementById('v_desc').value;
-      const now = Utils.nowISO();
-      let partnerId = null, empUid = null;
-      if (rawPartner) {
-        if (rawPartner.startsWith('emp_')) empUid = rawPartner.substring(4);
-        else partnerId = rawPartner;
-      }
-      const voucherId = Utils.genId(type === 'receipt' ? 'RCV' : 'PAY');
-      const voucherNo = (type === 'receipt' ? 'RCV-' : 'PAY-') + Date.now();
-      const voucherData = {
-        id: voucherId, voucher_no: voucherNo, type: type,
-        amount: amount, partner_id: partnerId, employee_uid: empUid,
-        employee_name: State.currentEmployee.name,
-        issued_by_name: State.currentEmployee.name,
-        date: now, payment_method: method, description: desc, created_at: now
-      };
-      if (empUid) {
-        const emp = emps.find(function (e) { return e.uid === empUid; });
-        voucherData.description = desc || ('سند ' + label + ' - ' + (emp ? emp.name : ''));
-      }
-      await Sync.save('vouchers', voucherId, voucherData);
-      const cashId = Utils.genId('CSH');
-      await Sync.save('cash_transactions', cashId, {
-        id: cashId, type: type === 'receipt' ? 'in' : 'out',
-        amount: amount, reference: voucherNo,
-        description: desc || ('سند ' + label),
-        category: type === 'receipt' ? 'سندات قبض' : 'سندات دفع',
-        date: now, employee_name: State.currentEmployee.name,
-        partner_id: partnerId, payment_method: method
-      });
-      if (partnerId) {
-        const p = (cache.partners || []).find(function (x) { return x.id === partnerId; });
-        if (p) {
-          if (type === 'receipt') p.balance = (Number(p.balance) || 0) - amount;
-          else p.balance = (Number(p.balance) || 0) + amount;
-          await Sync.save('partners', partnerId, p);
-        }
-      }
-      if (empUid) {
-        const txId = Utils.genId('EMP-TX');
-        await Sync.save('employee_transactions', txId, {
-          id: txId, type: type === 'receipt' ? 'bonus' : 'deduction',
-          employee_uid: empUid,
-          employee_name: (emps.find(function (e) { return e.uid === empUid; }) || {}).name || '',
-          amount: amount, reason: desc || ('سند ' + label),
-          date: now, paid: true, voucher_ref: voucherNo,
-          created_by: State.currentEmployee.name, created_at: now
-        });
-      }
-      Modal.close();
-      Toast.show('✅ تم إنشاء السند');
-      await Activity.log('voucher_' + type, voucherNo + ' - ' + Utils.fmtMoney(amount));
-      Vouchers.render();
+  // ⚠️ بناء قائمة الحسابات
+  const accountsList = getAllAccounts();
+  const accountsHtml = accountsList.map(function (acc) {
+    return '<option value="' + acc.id + '">' + acc.icon + ' ' + Utils.esc(acc.label) + '</option>';
+  }).join('');
+
+  const html =
+    '<div class="form-group"><label>المبلغ *</label><input id="v_amount" type="number" inputmode="decimal" step="any"></div>' +
+    '<div class="form-group"><label>الجهة (اختياري)</label><select id="v_partner">' +
+      '<option value="">-- بدون جهة --</option>' +
+      '<optgroup label="العملاء والموردون">' +
+        partners.map(function (p) { return '<option value="' + p.id + '">' + Utils.esc(p.name) + ' (' + (p.type === 'customer' ? 'عميل' : 'مورد') + ')</option>'; }).join('') +
+      '</optgroup>' +
+      '<optgroup label="الموظفون">' +
+        emps.map(function (e) { return '<option value="emp_' + e.uid + '">' + Utils.esc(e.name) + ' (موظف)</option>'; }).join('') +
+      '</optgroup>' +
+    '</select></div>' +
+    '<div class="form-group"><label>الحساب (طريقة الدفع) *</label>' +
+      '<select id="v_account">' + accountsHtml + '</select>' +
+    '</div>' +
+    '<div class="form-group"><label>البيان</label><input id="v_desc" placeholder="وصف السند"></div>' +
+    '<p style="color:' + color + ';font-size:13px;padding:10px;background:rgba(255,255,255,.05);border-radius:8px;">' +
+      (type === 'receipt' ? '⬇️ إضافة للخزينة' : '⬆️ خصم من الخزينة') + '</p>';
+
+  Modal.open('🧾 سند ' + label, html, async function () {
+    const amountEl = document.getElementById('v_amount');
+    const accountEl = document.getElementById('v_account');
+    const partnerEl = document.getElementById('v_partner');
+    const descEl = document.getElementById('v_desc');
+
+    const amount = parseFloat(amountEl.value) || 0;
+    if (amount <= 0) return Toast.show('أدخل مبلغ صحيح', 'error');
+
+    const accountId = accountEl.value;
+    const account = getAccount(accountId);
+    const rawPartner = partnerEl.value || null;
+    const desc = descEl ? descEl.value.trim() : '';
+    const now = Utils.nowISO();
+
+    let partnerId = null, empUid = null;
+    if (rawPartner) {
+      if (rawPartner.startsWith('emp_')) empUid = rawPartner.substring(4);
+      else partnerId = rawPartner;
+    }
+
+    const partner = partnerId
+      ? (cache.partners || []).find(function (x) { return x.id === partnerId; })
+      : null;
+    const emp = empUid
+      ? emps.find(function (e) { return e.uid === empUid; })
+      : null;
+
+    // ⚠️ 1. حفظ السند
+    const voucherId = Utils.genId(type === 'receipt' ? 'RCV' : 'PAY');
+    const voucherNo = (type === 'receipt' ? 'RCV-' : 'PAY-') + Date.now();
+
+    let voucherDescription = desc;
+    if (!voucherDescription) {
+      if (emp) voucherDescription = 'سند ' + label + ' - ' + emp.name;
+      else if (partner) voucherDescription = 'سند ' + label + ' - ' + partner.name;
+      else voucherDescription = 'سند ' + label;
+    }
+
+    const voucherData = {
+      id: voucherId,
+      voucher_no: voucherNo,
+      type: type,
+      amount: amount,
+      partner_id: partnerId,
+      partner_name: partner ? partner.name : '',
+      employee_uid: empUid,
+      employee_name: State.currentEmployee.name,
+      issued_by_name: State.currentEmployee.name,
+      date: now,
+      payment_method: account.label,
+      account_id: accountId,
+      account_label: account.label,
+      description: voucherDescription,
+      created_at: now
+    };
+    await Sync.save('vouchers', voucherId, voucherData);
+
+    // ⚠️ 2. حركة الخزينة
+    const cashId = Utils.genId('CSH');
+    await Sync.save('cash_transactions', cashId, {
+      id: cashId,
+      type: type === 'receipt' ? 'in' : 'out',
+      amount: amount,
+      reference: voucherNo,
+      description: voucherDescription,
+      category: type === 'receipt' ? 'سندات قبض' : 'سندات دفع',
+      date: now,
+      employee_name: State.currentEmployee.name,
+      partner_id: partnerId,
+      partner_name: partner ? partner.name : '',
+      payment_method: account.label,
+      account_id: accountId,
+      account_label: account.label,
+      voucher_id: voucherId
     });
-  }
+
+    // ⚠️ 3. تحديث رصيد الجهة (عميل/مورد)
+    if (partner) {
+      if (type === 'receipt') partner.balance = (Number(partner.balance) || 0) - amount;
+      else partner.balance = (Number(partner.balance) || 0) + amount;
+      await Sync.save('partners', partnerId, partner);
+    }
+
+    // ⚠️ 4. معاملة للموظف (لو موجود)
+    if (empUid) {
+      const txId = Utils.genId('EMP-TX');
+      await Sync.save('employee_transactions', txId, {
+        id: txId,
+        type: type === 'receipt' ? 'bonus' : 'deduction',
+        employee_uid: empUid,
+        employee_name: emp ? emp.name : '',
+        amount: amount,
+        reason: voucherDescription,
+        date: now,
+        paid: true,
+        voucher_ref: voucherNo,
+        account_id: accountId,
+        account_label: account.label,
+        created_by: State.currentEmployee.name,
+        created_at: now
+      });
+    }
+
+    Modal.close();
+    Toast.show('✅ تم إنشاء السند: ' + Utils.fmtMoney(amount) + ' - ' + account.label);
+
+    // ⚠️ 5. تسجيل النشاط
+    await Activity.log(
+      'voucher_' + type,
+      voucherNo + ' - ' + Utils.fmtMoney(amount) + ' - ' + account.label
+    );
+
+    Vouchers.render();
+  });
+}
 };
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -5458,41 +5523,110 @@ const Vouchers = {
    ═══════════════════════════════════════════════════════════════════ */
 const Cash = {
   render() {
-    const fromEl = document.getElementById('cashFrom');
-    const toEl = document.getElementById('cashTo');
-    const from = fromEl ? fromEl.value : '';
-    const to = toEl ? toEl.value : '';
-    let cash = (cache.cash_transactions || []).slice();
-    if (from && to) {
-      cash = cash.filter(function (c) { return c.date && c.date.split('T')[0] >= from && c.date.split('T')[0] <= to; });
+  const fromEl = document.getElementById('cashFrom');
+  const toEl = document.getElementById('cashTo');
+  const from = fromEl ? fromEl.value : '';
+  const to = toEl ? toEl.value : '';
+  let cash = (cache.cash_transactions || []).slice();
+  if (from && to) {
+    cash = cash.filter(function (c) {
+      return c.date && c.date.split('T')[0] >= from && c.date.split('T')[0] <= to;
+    });
+  }
+  cash.sort(function (a, b) {
+    return (b.date || '').localeCompare(a.date || '');
+  });
+
+  const allCash = cache.cash_transactions || [];
+
+  // ⚠️ حساب أرصدة كل حساب فرعي
+  const accountsBalances = {};
+  for (const acc of getAllAccounts()) {
+    accountsBalances[acc.id] = { account: acc, in: 0, out: 0, balance: 0 };
+  }
+
+  for (const c of allCash) {
+    // ⚠️ استخدام account_id لو موجود، أو methodToAccountId كـ fallback
+    const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+    if (!accountsBalances[accId]) {
+      // ⚠️ لو الحساب مش معروف، نضيفه كحساب افتراضي
+      accountsBalances[accId] = {
+        account: { id: accId, label: accId, icon: '❓', color: 'var(--text-2)' },
+        in: 0, out: 0, balance: 0
+      };
     }
-    cash.sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    if (c.type === 'in') {
+      accountsBalances[accId].in += Number(c.amount) || 0;
+    } else {
+      accountsBalances[accId].out += Number(c.amount) || 0;
+    }
+  }
 
-    const allCash = cache.cash_transactions || [];
-    const cashIn = allCash.filter(function (c) { return c.type === 'in'; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
-    const cashOut = allCash.filter(function (c) { return c.type === 'out'; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
-    const balance = cashIn - cashOut;
+  // ⚠️ حساب الرصيد والإجماليات
+  let totalIn = 0, totalOut = 0, totalBalance = 0;
+  for (const id in accountsBalances) {
+    const acc = accountsBalances[id];
+    acc.balance = acc.in - acc.out;
+    totalIn += acc.in;
+    totalOut += acc.out;
+    totalBalance += acc.balance;
+  }
 
-    const statsEl = document.getElementById('cashStats');
-    if (statsEl) {
-      statsEl.innerHTML =
-        '<div class="stat-card green"><div class="label">الواردات</div><div class="value">' + Utils.fmtNum(cashIn) + '</div></div>' +
-        '<div class="stat-card red"><div class="label">الصادرات</div><div class="value">' + Utils.fmtNum(cashOut) + '</div></div>' +
-        '<div class="stat-card blue" style="grid-column:span 2;"><div class="label">الرصيد</div><div class="value" style="font-size:26px;">' + Utils.fmtNum(balance) + '</div></div>';
+  // ⚠️ ترتيب الحسابات حسب order
+  const accountsArr = Object.values(accountsBalances).sort(function (a, b) {
+    return (a.account.order || 99) - (b.account.order || 99);
+  });
+
+  // ⚠️ عرض الإحصائيات
+  const statsEl = document.getElementById('cashStats');
+  if (statsEl) {
+    let accountsCardsHtml = '';
+    for (const item of accountsArr) {
+      const acc = item.account;
+      const icon = acc.icon || '💰';
+      const label = acc.label || acc.id;
+      // ⚠️ نعرض الحساب بس لو فيه حركة أو رصيد
+      if (item.in === 0 && item.out === 0) continue;
+      accountsCardsHtml +=
+        '<div class="stat-card" style="border-right-color:' + (acc.color || 'var(--gold)') + ';">' +
+          '<div class="label">' + icon + ' ' + Utils.esc(label) + '</div>' +
+          '<div class="value" style="color:' + (acc.color || 'var(--gold)') + ';">' + Utils.fmtNum(item.balance) + '</div>' +
+          '<div class="sub-value" style="font-size:10px;">+' + Utils.fmtNum(item.in) + ' / -' + Utils.fmtNum(item.out) + '</div>' +
+        '</div>';
     }
 
-    let html = '';
+    statsEl.innerHTML =
+      '<div class="stat-card green"><div class="label">إجمالي الواردات</div><div class="value">' + Utils.fmtNum(totalIn) + '</div></div>' +
+      '<div class="stat-card red"><div class="label">إجمالي الصادرات</div><div class="value">' + Utils.fmtNum(totalOut) + '</div></div>' +
+      '<div class="stat-card blue" style="grid-column:span 2;"><div class="label">💰 الإجمالي الكلي</div><div class="value" style="font-size:26px;">' + Utils.fmtNum(totalBalance) + '</div></div>' +
+      (accountsCardsHtml
+        ? '<div style="grid-column:span 2;padding:12px 0 6px;color:var(--gold);font-weight:700;font-size:13px;border-top:1px dashed rgba(212,175,55,.2);margin-top:6px;">📊 تفصيل الحسابات:</div>' + accountsCardsHtml
+        : '');
+  }
+
+  // ⚠️ عرض الحركات
+  let html = '';
+  if (cash.length === 0) {
+    html = '<div class="empty"><div class="ico">💰</div>لا توجد حركات</div>';
+  } else {
     for (const c of cash.slice(0, 100)) {
+      const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+      const acc = getAccount(accId);
+      const icon = acc.icon || '💰';
+      const label = acc.label || accId;
+
       html += '<div class="list-item"><div class="info">' +
         '<h4 style="color:' + (c.type === 'in' ? 'var(--green-2)' : 'var(--red-2)') + ';">' +
           (c.type === 'in' ? '↓ وارد' : '↑ صادر') + ' - ' + Utils.fmtMoney(c.amount) + '</h4>' +
         '<p>' + Utils.esc(c.description || '-') + '</p>' +
-        '<p style="font-size:11px;">' + Utils.fmtDate(c.date) + (c.reference ? ' | ' + Utils.esc(c.reference) : '') + '</p>' +
+        '<p style="font-size:11px;color:var(--gold);">' + icon + ' ' + Utils.esc(label) + (c.reference ? ' | ' + Utils.esc(c.reference) : '') + '</p>' +
+        '<p style="font-size:11px;">' + Utils.fmtDate(c.date) + '</p>' +
       '</div></div>';
     }
-    const el = document.getElementById('cashList');
-    if (el) el.innerHTML = html || '<div class="empty"><div class="ico">💰</div>لا توجد حركات</div>';
-  },
+  }
+  const el = document.getElementById('cashList');
+  if (el) el.innerHTML = html;
+},
 
   load() { Cash.render(); }
 };
