@@ -1699,13 +1699,15 @@ const Export = {
 async toPDF(doc, items, docType) {
   Toast.show('⏳ جاري تجهيز PDF...', 'info');
 
-  // ⚠️ لو المكتبة مش موجودة، نرجع للطريقة القديمة
+  // ⚠️ التحقق من المكتبات
   if (typeof html2pdf === 'undefined') {
     console.warn('html2pdf.js not loaded, falling back to print dialog');
     Toast.show('⚠️ مكتبة PDF غير محمّلة — استخدام الطباعة', 'info');
     const html = Export.generateHTML(doc, items, docType);
     return Export.printHTML(html, 'dialog');
   }
+
+  let container = null;
 
   try {
     // ⚠️ اسم الملف
@@ -1717,45 +1719,74 @@ async toPDF(doc, items, docType) {
     // ⚠️ توليد HTML كامل
     const fullHtml = Export.generateHTML(doc, items, docType);
 
-    // ⚠️ إنشاء iframe مخفي مؤقت
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.left = '0';
-    iframe.style.top = '0';
-    iframe.style.width = '80mm';
-    iframe.style.height = '1000px';
-    iframe.style.border = '0';
-    iframe.style.visibility = 'hidden';
-    iframe.style.zIndex = '-9999';
-    document.body.appendChild(iframe);
-
-    // ⚠️ كتابة الـ HTML داخل الـ iframe
-    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-    iframeDoc.open();
-    iframeDoc.write(fullHtml);
-    iframeDoc.close();
-
-    // ⚠️ انتظار تحميل الـ iframe
-    await new Promise(function (resolve) {
-      if (iframe.contentWindow.document.readyState === 'complete') {
-        resolve();
-      } else {
-        iframe.onload = resolve;
-        setTimeout(resolve, 1500);
-      }
-    });
-
-    // ⚠️ الحصول على body الـ iframe
-    const iframeBody = iframeDoc.body;
-    if (!iframeBody) {
-      throw new Error('فشل تحميل محتوى المستند');
+    // ⚠️ استخراج body content فقط (شيل DOCTYPE و head)
+    let bodyContent = fullHtml;
+    const bodyMatch = fullHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    if (bodyMatch && bodyMatch[1]) {
+      bodyContent = bodyMatch[1];
     }
+
+    // ⚠️ إنشاء حاوية حقيقية في الـ DOM (مخفية بعيد عن الشاشة لكن موجودة)
+    container = document.createElement('div');
+    container.id = 'pdf-temp-container';
+    container.style.position = 'fixed';
+    container.style.top = '0';
+    container.style.left = '0';
+    container.style.width = '302px';        // 80mm
+    container.style.minHeight = '100px';
+    container.style.background = '#ffffff';
+    container.style.color = '#000000';
+    container.style.padding = '12px';
+    container.style.fontFamily = 'Cairo, Tahoma, sans-serif';
+    container.style.fontSize = '11px';
+    container.style.direction = 'rtl';
+    container.style.zIndex = '-999999';
+    container.style.opacity = '0.01';
+    container.style.pointerEvents = 'none';
+    container.style.overflow = 'hidden';
+    container.innerHTML = bodyContent;
+
+    document.body.appendChild(container);
+
+    // ⚠️ انتظار رسم المحتوى (خصوصاً الصور)
+    await new Promise(function (resolve) {
+      // انتظر تحميل كل الصور لو فيه
+      const images = container.querySelectorAll('img');
+      if (images.length === 0) {
+        setTimeout(resolve, 300);
+        return;
+      }
+      let loaded = 0;
+      let resolved = false;
+      const done = function () {
+        if (resolved) return;
+        resolved = true;
+        resolve();
+      };
+      images.forEach(function (img) {
+        if (img.complete) {
+          loaded++;
+          if (loaded >= images.length) done();
+        } else {
+          img.onload = function () {
+            loaded++;
+            if (loaded >= images.length) done();
+          };
+          img.onerror = function () {
+            loaded++;
+            if (loaded >= images.length) done();
+          };
+        }
+      });
+      // Timeout احتياطي
+      setTimeout(done, 2000);
+    });
 
     // ⚠️ إعدادات PDF
     const options = {
       margin: [3, 3, 3, 3],
       filename: filename,
-      image: { type: 'jpeg', quality: 0.98 },
+      image: { type: 'jpeg', quality: 0.95 },
       html2canvas: {
         scale: 2,
         useCORS: true,
@@ -1764,28 +1795,21 @@ async toPDF(doc, items, docType) {
         logging: false,
         scrollX: 0,
         scrollY: 0,
-        windowWidth: 80 * 4, // 80mm تقريباً
-        windowHeight: iframeBody.scrollHeight || 1000
+        width: 302,
+        windowWidth: 302
       },
       jsPDF: {
         unit: 'mm',
         format: [80, 297],
         orientation: 'portrait'
       },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      pagebreak: { mode: ['css', 'legacy'] }
     };
 
-    // ⚠️ توليد PDF من الـ iframe body
-    await html2pdf().set(options).from(iframeBody).save();
+    // ⚠️ توليد PDF
+    await html2pdf().set(options).from(container).save();
 
-    // ⚠️ تنظيف الـ iframe
-    setTimeout(function () {
-      try {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      } catch (e) {}
-    }, 1000);
-
-    Toast.show('✅ تم إنشاء ملف PDF: ' + filename);
+    Toast.show('✅ تم إنشاء PDF: ' + filename);
     Utils.vibrate(80);
     return true;
 
@@ -1794,6 +1818,16 @@ async toPDF(doc, items, docType) {
     Toast.show('⚠️ فشل توليد PDF — استخدام الطباعة', 'error');
     const html = Export.generateHTML(doc, items, docType);
     return Export.printHTML(html, 'dialog');
+
+  } finally {
+    // ⚠️ تنظيف الحاوية دايماً — حتى لو حصل خطأ
+    if (container && container.parentNode) {
+      try {
+        container.parentNode.removeChild(container);
+      } catch (err) {
+        console.warn('Cleanup error:', err);
+      }
+    }
   }
 },
 
