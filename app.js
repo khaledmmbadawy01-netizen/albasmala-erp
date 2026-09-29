@@ -1696,15 +1696,14 @@ const Export = {
     return html;
   },
 
-  async toPDF(doc, items, docType) {
-  const html = Export.generateHTML(doc, items, docType);
-
+async toPDF(doc, items, docType) {
   Toast.show('⏳ جاري تجهيز PDF...', 'info');
 
   // ⚠️ لو المكتبة مش موجودة، نرجع للطريقة القديمة
   if (typeof html2pdf === 'undefined') {
     console.warn('html2pdf.js not loaded, falling back to print dialog');
     Toast.show('⚠️ مكتبة PDF غير محمّلة — استخدام الطباعة', 'info');
+    const html = Export.generateHTML(doc, items, docType);
     return Export.printHTML(html, 'dialog');
   }
 
@@ -1715,31 +1714,42 @@ const Export = {
     const safeName = String(docNo).replace(/[^A-Za-z0-9\-_]/g, '_');
     const filename = 'albasmala_' + docType + '_' + safeName + '.pdf';
 
-    // ⚠️ إنشاء عنصر مؤقت في DOM
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = html;
+    // ⚠️ توليد HTML كامل
+    const fullHtml = Export.generateHTML(doc, items, docType);
 
-    // ⚠️ استخراج الـ body content فقط
-    const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-    if (bodyMatch && bodyMatch[1]) {
-      tempDiv.innerHTML = bodyMatch[1];
+    // ⚠️ إنشاء iframe مخفي مؤقت
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.left = '0';
+    iframe.style.top = '0';
+    iframe.style.width = '80mm';
+    iframe.style.height = '1000px';
+    iframe.style.border = '0';
+    iframe.style.visibility = 'hidden';
+    iframe.style.zIndex = '-9999';
+    document.body.appendChild(iframe);
+
+    // ⚠️ كتابة الـ HTML داخل الـ iframe
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+    iframeDoc.open();
+    iframeDoc.write(fullHtml);
+    iframeDoc.close();
+
+    // ⚠️ انتظار تحميل الـ iframe
+    await new Promise(function (resolve) {
+      if (iframe.contentWindow.document.readyState === 'complete') {
+        resolve();
+      } else {
+        iframe.onload = resolve;
+        setTimeout(resolve, 1500);
+      }
+    });
+
+    // ⚠️ الحصول على body الـ iframe
+    const iframeBody = iframeDoc.body;
+    if (!iframeBody) {
+      throw new Error('فشل تحميل محتوى المستند');
     }
-
-    // ⚠️ نسخة من الحاوية على الشاشة (مخفية لكن قابلة للطباعة)
-    const container = document.createElement('div');
-    container.style.position = 'fixed';
-    container.style.left = '-9999px';
-    container.style.top = '0';
-    container.style.width = '80mm';
-    container.style.background = '#fff';
-    container.style.color = '#000';
-    container.style.padding = '4mm';
-    container.style.fontFamily = 'Cairo, Tahoma, sans-serif';
-    container.style.fontSize = '11px';
-    container.style.direction = 'rtl';
-    container.appendChild(tempDiv);
-
-    document.body.appendChild(container);
 
     // ⚠️ إعدادات PDF
     const options = {
@@ -1751,7 +1761,11 @@ const Export = {
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
-        logging: false
+        logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 80 * 4, // 80mm تقريباً
+        windowHeight: iframeBody.scrollHeight || 1000
       },
       jsPDF: {
         unit: 'mm',
@@ -1761,21 +1775,24 @@ const Export = {
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
     };
 
-    // ⚠️ توليد PDF
-    await html2pdf().set(options).from(container).save();
+    // ⚠️ توليد PDF من الـ iframe body
+    await html2pdf().set(options).from(iframeBody).save();
 
-    // ⚠️ تنظيف
+    // ⚠️ تنظيف الـ iframe
     setTimeout(function () {
-      try { document.body.removeChild(container); } catch (e) {}
+      try {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      } catch (e) {}
     }, 1000);
 
     Toast.show('✅ تم إنشاء ملف PDF: ' + filename);
     Utils.vibrate(80);
+    return true;
 
   } catch (e) {
     console.error('PDF generation failed:', e);
     Toast.show('⚠️ فشل توليد PDF — استخدام الطباعة', 'error');
-    // ⚠️ الرجوع للطريقة القديمة
+    const html = Export.generateHTML(doc, items, docType);
     return Export.printHTML(html, 'dialog');
   }
 },
@@ -1826,46 +1843,59 @@ toExcel(doc, items, docType) {
     // تفاصيل حسب النوع
     if (docType === 'payroll') {
       rows.push(['البند', 'القيمة']);
-      rows.push(['الراتب الأساسي', doc.basic_salary || 0]);
-      rows.push(['بدل سكن', doc.housing_allowance || 0]);
-      rows.push(['بدل مواصلات', doc.transport_allowance || 0]);
-      rows.push(['مكافآت', doc.bonuses || 0]);
-      rows.push(['خصم غياب', doc.absence_deduction || 0]);
-      rows.push(['خصم تأخير', doc.late_deduction || 0]);
-      rows.push(['تأمينات', doc.insurance_deduction || 0]);
-      rows.push(['ضريبة', doc.tax_deduction || 0]);
-      rows.push(['سلف', doc.advances_deduction || 0]);
-      rows.push(['صافي الراتب', doc.net_salary || 0]);
+      rows.push(['الراتب الأساسي', Number(doc.basic_salary) || 0]);
+      rows.push(['بدل سكن', Number(doc.housing_allowance) || 0]);
+      rows.push(['بدل مواصلات', Number(doc.transport_allowance) || 0]);
+      rows.push(['مكافآت', Number(doc.bonuses) || 0]);
+      rows.push(['خصم غياب', Number(doc.absence_deduction) || 0]);
+      rows.push(['خصم تأخير', Number(doc.late_deduction) || 0]);
+      rows.push(['تأمينات', Number(doc.insurance_deduction) || 0]);
+      rows.push(['ضريبة', Number(doc.tax_deduction) || 0]);
+      rows.push(['سلف', Number(doc.advances_deduction) || 0]);
+      rows.push(['صافي الراتب', Number(doc.net_salary) || 0]);
     } else if (docType === 'voucher_receipt' || docType === 'voucher_payment') {
       rows.push(['البند', 'القيمة']);
-      rows.push(['المبلغ', doc.amount || 0]);
+      rows.push(['المبلغ', Number(doc.amount) || 0]);
       rows.push(['طريقة الدفع', doc.payment_method || '-']);
       rows.push(['الحساب', doc.account_label || '-']);
       rows.push(['البيان', doc.description || '-']);
     } else {
       // فواتير بيع / شراء / مرتجعات
-      rows.push(['الصنف', 'الكمية', 'السعر', 'الإجمالي']);
-      for (const it of items) {
-        rows.push([
-          it.product_name || it.name || 'صنف',
-          Number(it.quantity) || 0,
-          Number(it.price) || 0,
-          Number(it.total) || 0
-        ]);
+      rows.push(['م', 'الصنف', 'الكمية', 'السعر', 'الإجمالي']);
+
+      // ⚠️ التأكد إن items موجودة
+      const safeItems = Array.isArray(items) ? items : [];
+
+      if (safeItems.length === 0) {
+        rows.push(['-', 'لا توجد أصناف', 0, 0, 0]);
+      } else {
+        for (let i = 0; i < safeItems.length; i++) {
+          const it = safeItems[i] || {};
+          rows.push([
+            i + 1,
+            it.product_name || it.name || 'صنف',
+            Number(it.quantity) || 0,
+            Number(it.price) || 0,
+            Number(it.total) || 0
+          ]);
+        }
       }
+
       rows.push([]);
-      rows.push(['الإجمالي الفرعي', doc.subtotal || 0]);
-      rows.push(['نوع الخصم', doc.discount_type === 'percent' ? 'نسبة %' : 'مبلغ']);
+      rows.push(['', 'الإجمالي الفرعي', '', '', Number(doc.subtotal) || 0]);
+      rows.push(['', 'نوع الخصم', '', '', doc.discount_type === 'percent' ? 'نسبة %' : 'مبلغ']);
+
       if (doc.discount_type === 'percent') {
-        rows.push(['قيمة الخصم', (doc.discount_value || 0) + '%']);
+        rows.push(['', 'نسبة الخصم', '', '', (Number(doc.discount_value) || 0) + '%']);
       }
-      rows.push(['الخصم الفعلي', doc.discount || 0]);
-      rows.push(['الضريبة', doc.tax || 0]);
-      rows.push(['الإجمالي', doc.total || 0]);
-      rows.push(['المدفوع', doc.paid || 0]);
-      rows.push(['الباقي', doc.remaining || 0]);
-      rows.push(['طريقة الدفع', doc.payment_method || '-']);
-      rows.push(['الحساب', doc.account_label || '-']);
+
+      rows.push(['', 'الخصم الفعلي', '', '', Number(doc.discount) || 0]);
+      rows.push(['', 'الضريبة', '', '', Number(doc.tax) || 0]);
+      rows.push(['', 'الإجمالي', '', '', Number(doc.total) || 0]);
+      rows.push(['', 'المدفوع', '', '', Number(doc.paid) || 0]);
+      rows.push(['', 'الباقي', '', '', Number(doc.remaining) || 0]);
+      rows.push(['', 'طريقة الدفع', '', '', doc.payment_method || '-']);
+      rows.push(['', 'الحساب', '', '', doc.account_label || '-']);
     }
 
     rows.push([]);
@@ -1877,15 +1907,11 @@ toExcel(doc, items, docType) {
 
     // ⚠️ ضبط عرض الأعمدة
     ws['!cols'] = [
-      { wch: 25 }, // العمود الأول (الصنف/البند)
-      { wch: 15 }, // الثاني (الكمية/القيمة)
-      { wch: 15 }, // الثالث (السعر)
-      { wch: 15 }  // الرابع (الإجمالي)
-    ];
-
-    // ⚠️ دمج الخلايا للعنوان
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } } // دمج الصف الأول
+      { wch: 8 },   // م
+      { wch: 30 },  // الصنف
+      { wch: 12 },  // الكمية
+      { wch: 12 },  // السعر
+      { wch: 15 }   // الإجمالي
     ];
 
     // ⚠️ إنشاء الـ Workbook
@@ -1897,14 +1923,15 @@ toExcel(doc, items, docType) {
 
     Toast.show('✅ تم تحميل ملف Excel: ' + filename);
     Utils.vibrate(80);
+    return true;
 
   } catch (e) {
     console.error('Excel generation failed:', e);
     Toast.show('⚠️ فشل توليد Excel — استخدام CSV', 'error');
     return Export.toCSV(doc, items, docType);
   }
-},
-
+}
+   
 // ⚠️ دالة احتياطية (CSV) لو مكتبة xlsx مش موجودة
 toCSV(doc, items, docType) {
   const titles = {
