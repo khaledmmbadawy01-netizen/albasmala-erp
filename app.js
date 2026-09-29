@@ -4232,106 +4232,189 @@ removeItem(i) {
 },
 
   async save() {
-    if (!requirePermission('sales_create', 'إنشاء فاتورة')) return;
-    const custId = document.getElementById('saleCustomer').value;
-    if (!custId) return Toast.show('اختر عميل', 'error');
-    if (saleItems.length === 0) return Toast.show('أضف أصناف', 'error');
+  if (!requirePermission('sales_create', 'إنشاء فاتورة')) return;
 
-    for (const it of saleItems) {
-      const p = (cache.products || []).find(function (x) { return x.id === it.product_id; });
-      if (!p) return Toast.show('منتج غير موجود', 'error');
-      if ((Number(p.quantity) || 0) < it.quantity) {
-        return Toast.show('❌ رصيد "' + p.name + '" غير كافٍ', 'error');
-      }
+  const custId = document.getElementById('saleCustomer').value;
+  if (!custId) return Toast.show('اختر عميل', 'error');
+  if (saleItems.length === 0) return Toast.show('أضف أصناف', 'error');
+
+  // ⚠️ التحقق من الرصيد
+  for (const it of saleItems) {
+    const p = (cache.products || []).find(function (x) { return x.id === it.product_id; });
+    if (!p) return Toast.show('منتج غير موجود', 'error');
+    if ((Number(p.quantity) || 0) < it.quantity) {
+      return Toast.show('❌ رصيد "' + p.name + '" غير كافٍ', 'error');
     }
+  }
 
-    const verified = await Biometric.verify('تأكيد فاتورة المبيعات');
-    if (!verified) return Toast.show('فشل التحقق', 'error');
+  // ⚠️ تأكيد الهوية
+  const verified = await Biometric.verify('تأكيد فاتورة المبيعات');
+  if (!verified) return Toast.show('فشل التحقق', 'error');
 
-    const disc = parseFloat(document.getElementById('saleDiscount').value) || 0;
-    const tax = parseFloat(document.getElementById('saleTax').value) || 0;
-    const paid = parseFloat(document.getElementById('salePaid').value) || 0;
-    const sub = saleItems.reduce(function (s, it) { return s + it.quantity * it.price; }, 0);
-    const total = sub - disc + tax;
-    const remaining = total - paid;
-    const invoiceId = Utils.genId('S');
-    const invoiceNo = 'S-' + Date.now();
-    const now = Utils.nowISO();
-    const paymentMethod = document.getElementById('salePayment').value;
+  // ⚠️ قراءة الخصم (نسبة أو مبلغ)
+  const discTypeEl = document.getElementById('saleDiscountType');
+  const discType = discTypeEl ? discTypeEl.value : 'amount';
+  const discValue = parseFloat(document.getElementById('saleDiscount').value) || 0;
 
-    for (const it of saleItems) {
-      const p = (cache.products || []).find(function (x) { return x.id === it.product_id; });
-      p.quantity = (Number(p.quantity) || 0) - it.quantity;
-      await Sync.save('products', p.id, p);
-      const moveId = Utils.genId('SM');
-      await Sync.save('stock_movements', moveId, {
-        id: moveId, product_id: it.product_id, type: 'out',
-        quantity: it.quantity, balance_after: p.quantity,
-        reference: invoiceNo, date: now,
-        employee_name: State.currentEmployee.name
-      });
-    }
+  const tax = parseFloat(document.getElementById('saleTax').value) || 0;
+  const paid = parseFloat(document.getElementById('salePaid').value) || 0;
+  const paymentMethod = document.getElementById('salePayment').value;
 
-    await Sync.save('sales_invoices', invoiceId, {
-      id: invoiceId, invoice_no: invoiceNo,
-      customer_id: custId,
-      customer_name: (cache.partners || []).find(function (x) { return x.id === custId; })
-        ? (cache.partners || []).find(function (x) { return x.id === custId; }).name : '',
+  // ⚠️ حساب المجموع الفرعي
+  const sub = saleItems.reduce(function (s, it) {
+    return s + (Number(it.quantity) || 0) * (Number(it.price) || 0);
+  }, 0);
+
+  // ⚠️ حساب الخصم
+  let disc = 0;
+  if (discType === 'percent') {
+    disc = sub * (discValue / 100);
+  } else {
+    disc = discValue;
+  }
+  if (disc > sub) disc = sub;
+  if (disc < 0) disc = 0;
+
+  // ⚠️ الإجمالي النهائي
+  const total = sub - disc + tax;
+  const remaining = total - paid;
+
+  // ⚠️ الحساب اللي الفلوس دخلته
+  const accountId = methodToAccountId(paymentMethod);
+  const account = getAccount(accountId);
+
+  const invoiceId = Utils.genId('S');
+  const invoiceNo = 'S-' + Date.now();
+  const now = Utils.nowISO();
+
+  // ⚠️ 1. خصم الكميات من المخزون
+  for (const it of saleItems) {
+    const p = (cache.products || []).find(function (x) { return x.id === it.product_id; });
+    p.quantity = (Number(p.quantity) || 0) - it.quantity;
+    await Sync.save('products', p.id, p);
+    const moveId = Utils.genId('SM');
+    await Sync.save('stock_movements', moveId, {
+      id: moveId,
+      product_id: it.product_id,
+      type: 'out',
+      quantity: it.quantity,
+      balance_after: p.quantity,
+      reference: invoiceNo,
+      date: now,
+      employee_name: State.currentEmployee.name
+    });
+  }
+
+  // ⚠️ 2. حفظ الفاتورة
+  const customer = (cache.partners || []).find(function (x) { return x.id === custId; });
+  await Sync.save('sales_invoices', invoiceId, {
+    id: invoiceId,
+    invoice_no: invoiceNo,
+    customer_id: custId,
+    customer_name: customer ? customer.name : '',
+    employee_uid: State.currentUser.uid,
+    employee_name: State.currentEmployee.name,
+    date: now,
+    subtotal: sub,
+    discount_type: discType,
+    discount_value: discValue,
+    discount: disc,
+    tax: tax,
+    total: total,
+    paid: paid,
+    remaining: remaining,
+    payment_method: paymentMethod,
+    account_id: accountId,
+    account_label: account.label,
+    fingerprint_verified: 1,
+    created_at: now
+  });
+
+  // ⚠️ 3. حفظ الأصناف
+  for (const it of saleItems) {
+    const iid = Utils.genId('SI');
+    await Sync.save('sales_items', iid, {
+      id: iid,
+      invoice_id: invoiceId,
+      product_id: it.product_id,
+      product_name: it.name,
+      quantity: it.quantity,
+      price: it.price,
+      cost: it.cost,
+      cost_at_sale: it.cost,
+      total: it.quantity * it.price
+    });
+  }
+
+  // ⚠️ 4. تحديث رصيد العميل
+  if (customer) {
+    customer.balance = (Number(customer.balance) || 0) + remaining;
+    await Sync.save('partners', custId, customer);
+  }
+
+  // ⚠️ 5. لو فيه مبلغ مدفوع → إنشاء سند قبض + حركة خزينة
+  if (paid > 0) {
+    const voucherId = Utils.genId('RCV');
+    const voucherNo = 'RCV-' + Date.now();
+
+    // سند القبض
+    await Sync.save('vouchers', voucherId, {
+      id: voucherId,
+      voucher_no: voucherNo,
+      type: 'receipt',
+      amount: paid,
+      partner_id: custId,
+      partner_name: customer ? customer.name : '',
       employee_uid: State.currentUser.uid,
       employee_name: State.currentEmployee.name,
-      date: now, subtotal: sub, discount: disc, tax: tax,
-      total: total, paid: paid, remaining: remaining,
+      issued_by_name: State.currentEmployee.name,
+      date: now,
       payment_method: paymentMethod,
-      fingerprint_verified: 1, created_at: now
+      account_id: accountId,
+      account_label: account.label,
+      description: 'تحصيل فاتورة ' + invoiceNo,
+      reference: invoiceNo,
+      auto_generated: true,
+      invoice_id: invoiceId,
+      invoice_type: 'sales',
+      created_at: now
     });
 
-    for (const it of saleItems) {
-      const iid = Utils.genId('SI');
-      await Sync.save('sales_items', iid, {
-        id: iid, invoice_id: invoiceId, product_id: it.product_id,
-        product_name: it.name, quantity: it.quantity, price: it.price,
-        cost: it.cost, cost_at_sale: it.cost,
-        total: it.quantity * it.price
-      });
-    }
-
-    const c = (cache.partners || []).find(function (x) { return x.id === custId; });
-    if (c) {
-      c.balance = (Number(c.balance) || 0) + remaining;
-      await Sync.save('partners', custId, c);
-    }
-
-    if (paid > 0) {
-      const voucherId = Utils.genId('RCV');
-      const voucherNo = 'RCV-' + Date.now();
-      await Sync.save('vouchers', voucherId, {
-        id: voucherId, voucher_no: voucherNo, type: 'receipt',
-        amount: paid, partner_id: custId,
-        employee_uid: State.currentUser.uid,
-        employee_name: State.currentEmployee.name,
-        date: now, payment_method: paymentMethod,
-        description: 'تحصيل فاتورة ' + invoiceNo,
-        reference: invoiceNo, auto_generated: true, created_at: now
-      });
-      const cashId = Utils.genId('CSH');
-      await Sync.save('cash_transactions', cashId, {
-        id: cashId, type: 'in', amount: paid, reference: voucherNo,
-        description: 'تحصيل فاتورة ' + invoiceNo,
-        category: 'مبيعات', date: now,
-        employee_name: State.currentEmployee.name,
-        partner_id: custId, payment_method: paymentMethod
-      });
-    }
-
-    await Activity.log('sale_invoice', invoiceNo + ' - ' + Utils.fmtMoney(total));
-    Toast.show('✅ تم تسجيل الفاتورة');
-
-    saleItems.length = 0;
-    State._saleFormActive = false;
-    State._initialized.sales = false;
-    Sales.init();
-    setTimeout(function () { Invoices.show(invoiceId, 'sales'); }, 300);
+    // حركة الخزينة
+    const cashId = Utils.genId('CSH');
+    await Sync.save('cash_transactions', cashId, {
+      id: cashId,
+      type: 'in',
+      amount: paid,
+      reference: voucherNo,
+      description: 'تحصيل فاتورة ' + invoiceNo,
+      category: 'مبيعات',
+      date: now,
+      employee_name: State.currentEmployee.name,
+      partner_id: custId,
+      partner_name: customer ? customer.name : '',
+      payment_method: paymentMethod,
+      account_id: accountId,
+      account_label: account.label,
+      voucher_id: voucherId,
+      invoice_id: invoiceId
+    });
   }
+
+  // ⚠️ 6. تسجيل النشاط
+  await Activity.log('sale_invoice', invoiceNo + ' - ' + Utils.fmtMoney(total) + ' - ' + account.label);
+
+  Toast.show('✅ تم تسجيل الفاتورة');
+
+  // ⚠️ 7. إعادة التهيئة
+  saleItems.length = 0;
+  State._saleFormActive = false;
+  State._initialized.sales = false;
+  Sales.init();
+
+  // ⚠️ 8. عرض الفاتورة
+  setTimeout(function () { Invoices.show(invoiceId, 'sales'); }, 300);
+}
 };
 
 /* ═══════════════════════════════════════════════════════════════════
