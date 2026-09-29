@@ -2505,7 +2505,16 @@ body::after {
     </div>
     <div class="invoice-total">
       <div class="row"><span>الإجمالي الفرعي:</span><span id="saleSubtotal">0.00</span></div>
-      <div class="row"><span>الخصم:</span><input type="number" id="saleDiscount" value="0" oninput="Sales.calcTotals()"></div>
+      <div class="row" style="flex-wrap:wrap;gap:6px;">
+  <span id="saleDiscountLabel">الخصم:</span>
+  <div style="display:flex;gap:6px;align-items:center;">
+    <select id="saleDiscountType" onchange="Sales.calcTotals()" style="width:75px;padding:6px 4px;background:#0a0a0a;border:1px solid var(--border-light);border-radius:8px;color:var(--gold);font-family:inherit;font-weight:700;font-size:12px;text-align:center;">
+      <option value="amount">💰 مبلغ</option>
+      <option value="percent">📊 %</option>
+    </select>
+    <input type="number" id="saleDiscount" value="0" step="any" oninput="Sales.calcTotals()" onchange="Sales.calcTotals()">
+  </div>
+      </div>
       <div class="row"><span>الضريبة:</span><input type="number" id="saleTax" value="0" oninput="Sales.calcTotals()"></div>
       <div class="row total"><span>الإجمالي:</span><span id="saleTotal">0.00</span></div>
       <div class="row"><span>المدفوع:</span><input type="number" id="salePaid" value="0" oninput="Sales.calcTotals()"></div>
