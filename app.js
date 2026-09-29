@@ -1930,8 +1930,8 @@ toExcel(doc, items, docType) {
     Toast.show('⚠️ فشل توليد Excel — استخدام CSV', 'error');
     return Export.toCSV(doc, items, docType);
   }
-}
-   
+},
+
 // ⚠️ دالة احتياطية (CSV) لو مكتبة xlsx مش موجودة
 toCSV(doc, items, docType) {
   const titles = {
