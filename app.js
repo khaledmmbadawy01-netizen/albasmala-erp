@@ -4307,32 +4307,65 @@ removeItem(i) {
 },
 
   calcTotals() {
-    const subEl = document.getElementById('purSubtotal');
-    const totEl = document.getElementById('purTotal');
-    const remEl = document.getElementById('purRemaining');
-    if (!subEl || !totEl || !remEl) return;
+  const subEl = document.getElementById('purSubtotal');
+  const totEl = document.getElementById('purTotal');
+  const remEl = document.getElementById('purRemaining');
+  if (!subEl || !totEl || !remEl) return;
 
-    let sub = 0;
-    for (let i = 0; i < purItems.length; i++) {
-      const it = purItems[i];
-      if (!it) continue;
-      const qty = Number(it.quantity) || 0;
-      const price = Number(it.price) || 0;
-      sub += qty * price;
+  // ⚠️ حساب المجموع الفرعي
+  let sub = 0;
+  for (let i = 0; i < purItems.length; i++) {
+    const it = purItems[i];
+    if (!it) continue;
+    const qty = Number(it.quantity) || 0;
+    const price = Number(it.price) || 0;
+    sub += qty * price;
+  }
+
+  // ⚠️ قراءة القيم من الحقول
+  const discEl = document.getElementById('purDiscount');
+  const taxEl = document.getElementById('purTax');
+  const paidEl = document.getElementById('purPaid');
+
+  // ⚠️ نوع الخصم — مبلغ أو نسبة
+  const discTypeEl = document.getElementById('purDiscountType');
+  const discType = discTypeEl ? discTypeEl.value : 'amount';
+
+  const discValue = discEl ? (parseFloat(discEl.value) || 0) : 0;
+  const tax = taxEl ? (parseFloat(taxEl.value) || 0) : 0;
+  const paid = paidEl ? (parseFloat(paidEl.value) || 0) : 0;
+
+  // ⚠️ حساب الخصم حسب النوع
+  let disc = 0;
+  if (discType === 'percent') {
+    disc = sub * (discValue / 100);
+  } else {
+    disc = discValue;
+  }
+
+  // ⚠️ حماية: الخصم ما يزيدش عن المجموع
+  if (disc > sub) disc = sub;
+  if (disc < 0) disc = 0;
+
+  // ⚠️ الحساب النهائي
+  const total = sub - disc + tax;
+  const remaining = total - paid;
+
+  // ⚠️ عرض النتيجة
+  subEl.textContent = Utils.fmtMoney(sub);
+  totEl.textContent = Utils.fmtMoney(total);
+  remEl.textContent = Utils.fmtMoney(remaining);
+
+  // ⚠️ عرض المبلغ الفعلي للخصم لو كان نسبة
+  const discLabelEl = document.getElementById('purDiscountLabel');
+  if (discLabelEl) {
+    if (discType === 'percent' && discValue > 0) {
+      discLabelEl.textContent = 'الخصم (' + discValue + '%):';
+    } else {
+      discLabelEl.textContent = 'الخصم:';
     }
-    const discEl = document.getElementById('purDiscount');
-    const taxEl = document.getElementById('purTax');
-    const paidEl = document.getElementById('purPaid');
-    const disc = discEl ? (parseFloat(discEl.value) || 0) : 0;
-    const tax = taxEl ? (parseFloat(taxEl.value) || 0) : 0;
-    const paid = paidEl ? (parseFloat(paidEl.value) || 0) : 0;
-    const total = sub - disc + tax;
-    const remaining = total - paid;
-
-    subEl.textContent = Utils.fmtMoney(sub);
-    totEl.textContent = Utils.fmtMoney(total);
-    remEl.textContent = Utils.fmtMoney(remaining);
-  },
+  }
+},
 
   async save() {
     if (!requirePermission('purchase_create', 'إنشاء فاتورة')) return;
