@@ -6225,7 +6225,7 @@ const Invoices = {
     html += '<div style="text-align:center;margin-top:15px;font-size:11px;border-top:1px dashed #000;padding-top:10px;">شكراً لتعاملكم معنا<br>© البسملة 2026</div></div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;">' +
         '<button class="btn btn-primary" onclick="Invoices.openExport(\'' + id + '\',\'' + type + '\')">📤 تصدير</button>' +
-        '<button class="btn btn-info" onclick="Invoices.print(\'' + id + '\',\'' + type + '\')">🖨️ طباعة</button>' +
+        '<button class="btn btn-info" onclick="Modal.close();Printer.openDialog((cache[\'' + store + '\'] || []).find(x=>x.id===\'' + id + '\'), (cache[\'' + itemsStore + '\'] || []).filter(i=>i.invoice_id===\'' + id + '\' || i.return_id===\'' + id + '\'), \'' + type + '\')">🖨️ طباعة</button>' +
         '<button class="btn btn-success" onclick="Invoices.share(\'' + id + '\',\'' + type + '\')">📱 مشاركة</button>' +
         '<button class="btn btn-warning" onclick="Invoices.saveToPhone(\'' + id + '\',\'' + type + '\')">💾 حفظ</button>' +
       '</div>';
