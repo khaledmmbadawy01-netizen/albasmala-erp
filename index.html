@@ -2421,16 +2421,19 @@ body::after {
        📋 صفحة الموارد البشرية HR
        ═══════════════════════════════════════════════════════════════ -->
   <div id="page-hr" class="page hidden">
-    <div class="tabs">
-      <div class="tab active" onclick="HR.switchTab(event,'overview')">نظرة عامة</div>
-      <div class="tab" onclick="HR.switchTab(event,'leaves')">إجازات</div>
-      <div class="tab" onclick="HR.switchTab(event,'advances')">سلف</div>
-      <div class="tab" onclick="HR.switchTab(event,'bonuses')">مكافآت</div>
-    </div>
-    <div id="hr-overview" class="hr-panel"></div>
-    <div id="hr-leaves" class="hr-panel hidden"></div>
-    <div id="hr-advances" class="hr-panel hidden"></div>
-    <div id="hr-bonuses" class="hr-panel hidden"></div>
+  <div id="page-hr" class="page hidden">
+  <div class="tabs">
+    <div class="tab active" onclick="HR.switchTab(event,'overview')">📊 نظرة عامة</div>
+    <div class="tab" onclick="HR.switchTab(event,'leaves')">📅 إجازات</div>
+    <div class="tab" onclick="HR.switchTab(event,'advances')">💰 سلف</div>
+    <div class="tab" onclick="HR.switchTab(event,'bonuses')">🎁 مكافآت</div>
+    <div class="tab" onclick="HR.switchTab(event,'deductions')">➖ خصومات</div>
+  </div>
+  <div id="hr-overview" class="hr-panel"></div>
+  <div id="hr-leaves" class="hr-panel hidden"></div>
+  <div id="hr-advances" class="hr-panel hidden"></div>
+  <div id="hr-bonuses" class="hr-panel hidden"></div>
+  <div id="hr-deductions" class="hr-panel hidden"></div>
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
