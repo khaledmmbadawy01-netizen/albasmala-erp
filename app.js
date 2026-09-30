@@ -4419,13 +4419,22 @@ const Employees = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
-   24. HR
+   24. HR — الموارد البشرية مع إحصائيات شاملة
    ═══════════════════════════════════════════════════════════════════ */
 const HR = {
+  // ⚠️ حالة البحث والفلاتر
+  _leaveFilters: { search: '', type: 'all', from: '', to: '' },
+  _empFilters: { search: '' },
+  _displayLimit: 30,
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔄 التبويبات
+  // ═══════════════════════════════════════════════════════════════════
   switchTab(e, tab) {
     State.currentHRTab = tab;
     document.querySelectorAll('#page-hr .tab').forEach(function (t) { t.classList.remove('active'); });
     if (e && e.target) e.target.classList.add('active');
+
     document.querySelectorAll('.hr-panel').forEach(function (p) { p.classList.add('hidden'); });
     const panel = document.getElementById('hr-' + tab);
     if (panel) panel.classList.remove('hidden');
@@ -4440,148 +4449,561 @@ const HR = {
     else if (tab === 'leaves') HR.renderLeaves();
     else if (tab === 'advances') HR.renderAdvances();
     else if (tab === 'bonuses') HR.renderBonuses();
+    else if (tab === 'deductions') HR.renderDeductions();
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 📊 نظرة عامة
+  // ═══════════════════════════════════════════════════════════════════
   renderOverview() {
     const el = document.getElementById('hr-overview');
     if (!el) return;
+
     const emps = (cache.employees || []).filter(function (e) { return e.active !== false; });
     const today = Utils.todayStr();
     const monthKey = Utils.getMonthKey();
+
     const att = (cache.attendance || []).filter(function (a) { return a.date && a.date.startsWith(monthKey); });
     const payrolls = (cache.payroll || []).filter(function (p) { return p.month === monthKey; });
+    const leaves = (cache.leaves || []).filter(function (l) { return l.date && l.date.startsWith(monthKey); });
+    const txs = (cache.employee_transactions || []).filter(function (t) { return t.date && t.date.startsWith(monthKey); });
+
+    // ⚠️ الإحصائيات
     const totalSalary = emps.reduce(function (s, e) { return s + (Number(e.basic_salary) || 0); }, 0);
-    const totalAllow = emps.reduce(function (s, e) {
+    const totalAllowances = emps.reduce(function (s, e) {
       return s + (Number(e.housing_allowance) || 0) + (Number(e.transport_allowance) || 0);
     }, 0);
     const presentToday = att.filter(function (a) { return a.date === today && a.check_in; }).length;
-    const totalLateThisMonth = att.reduce(function (s, a) { return s + (Number(a.minutes_late) || 0); }, 0);
-    const totalDeductions = payrolls.reduce(function (s, p) {
-      return s + (Number(p.absence_deduction) || 0) + (Number(p.late_deduction) || 0);
-    }, 0);
+    const totalLateMinutes = att.reduce(function (s, a) { return s + (Number(a.minutes_late) || 0); }, 0);
+    const totalLateDeductions = payrolls.reduce(function (s, p) { return s + (Number(p.late_deduction) || 0); }, 0);
+    const totalAbsenceDeductions = payrolls.reduce(function (s, p) { return s + (Number(p.absence_deduction) || 0); }, 0);
+    const totalAdvances = txs.filter(function (t) { return t.type === 'advance'; })
+      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+    const totalBonuses = txs.filter(function (t) { return t.type === 'bonus'; })
+      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+    const totalDeductions = txs.filter(function (t) { return t.type === 'deduction'; })
+      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
 
-    let html =
-      '<div class="stats-grid" style="padding:0;">' +
-        '<div class="stat-card"><div class="label">عدد الموظفين</div><div class="value">' + emps.length + '</div></div>' +
-        '<div class="stat-card green"><div class="label">حضور اليوم</div><div class="value">' + presentToday + ' / ' + emps.length + '</div></div>' +
-        '<div class="stat-card blue"><div class="label">إجمالي الرواتب</div><div class="value">' + Utils.fmtNum(totalSalary) + '</div></div>' +
-        '<div class="stat-card orange"><div class="label">إجمالي البدلات</div><div class="value">' + Utils.fmtNum(totalAllow) + '</div></div>' +
-        '<div class="stat-card red"><div class="label">إجمالي التأخير (د)</div><div class="value">' + totalLateThisMonth + '</div></div>' +
-        '<div class="stat-card red"><div class="label">خصومات الشهر</div><div class="value">' + Utils.fmtNum(totalDeductions) + '</div></div>' +
-      '</div>' +
-      '<div class="card"><h3>👥 قائمة الموظفين</h3>';
-    for (const e of emps) {
-      html += '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;font-size:13px;">' +
-        '<div><strong>' + Utils.esc(e.name) + '</strong><br><small style="color:#888;">' + Utils.esc(e.job_title || '') + '</small></div>' +
-        '<div style="text-align:left;">' +
-          '<div style="color:var(--gold);font-weight:700;">' + Utils.fmtMoney(e.basic_salary) + '</div>' +
-          '<small style="color:#888;">' + Utils.esc(PERMISSIONS[e.role] ? PERMISSIONS[e.role].label : e.role) + '</small>' +
-        '</div></div>';
+    // ⚠️ إحصائيات الإجازات
+    const approvedLeaves = leaves.filter(function (l) { return l.approved === true; }).length;
+    const pendingLeaves = leaves.filter(function (l) { return l.approved === undefined || l.approved === null; }).length;
+
+    let html = '';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📊 إحصائيات الشهر
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="stats-grid" style="padding:0;">' +
+      '<div class="stat-card blue"><div class="label">عدد الموظفين</div><div class="value">' + emps.length + '</div></div>' +
+      '<div class="stat-card green"><div class="label">حضور اليوم</div><div class="value">' + presentToday + ' / ' + emps.length + '</div></div>' +
+      '<div class="stat-card gold"><div class="label">إجمالي الرواتب</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(totalSalary) + '</div></div>' +
+      '<div class="stat-card purple"><div class="label">إجمالي البدلات</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(totalAllowances) + '</div></div>' +
+      '<div class="stat-card orange"><div class="label">دقائق التأخير</div><div class="value">' + totalLateMinutes + '</div></div>' +
+      '<div class="stat-card red"><div class="label">خصومات الشهر</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(totalLateDeductions + totalAbsenceDeductions) + '</div></div>' +
+      '<div class="stat-card red"><div class="label">إجمالي السلف</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(totalAdvances) + '</div></div>' +
+      '<div class="stat-card green"><div class="label">إجمالي المكافآت</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(totalBonuses) + '</div></div>' +
+      '<div class="stat-card red"><div class="label">إجمالي الخصومات</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(totalDeductions) + '</div></div>' +
+      '<div class="stat-card blue"><div class="label">إجازات الشهر</div><div class="value">' + leaves.length + '</div></div>' +
+      '<div class="stat-card green"><div class="label">إجازات معتمدة</div><div class="value">' + approvedLeaves + '</div></div>' +
+      '<div class="stat-card orange"><div class="label">إجازات معلقة</div><div class="value">' + pendingLeaves + '</div></div>' +
+    '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 👥 قائمة الموظفين
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card"><h3>👥 قائمة الموظفين (' + emps.length + ')</h3>';
+
+    if (emps.length === 0) {
+      html += '<div class="empty"><div class="ico">👥</div>لا يوجد موظفون</div>';
+    } else {
+      for (const e of emps) {
+        const empAtt = att.filter(function (a) { return a.employee_uid === e.uid; });
+        const empPresent = empAtt.filter(function (a) { return a.status === 'present' && a.check_in; }).length;
+        const empLate = empAtt.reduce(function (s, a) { return s + (Number(a.minutes_late) || 0); }, 0);
+        const empPayroll = payrolls.find(function (p) { return p.employee_uid === e.uid; });
+        const netSalary = empPayroll ? empPayroll.net_salary : 0;
+
+        html += '<div style="padding:12px;border-bottom:1px solid #222;border-radius:8px;margin-bottom:8px;background:rgba(0,0,0,.2);">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+            '<div>' +
+              '<strong style="color:var(--gold);font-size:14px;">' + Utils.esc(e.name) + '</strong>' +
+              '<div style="font-size:11px;color:#888;margin-top:2px;">' + Utils.esc(e.job_title || '-') + '</div>' +
+            '</div>' +
+            '<span class="badge badge-blue">' + Utils.esc(PERMISSIONS[e.role] ? PERMISSIONS[e.role].label : e.role) + '</span>' +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:11px;">' +
+            '<div><span style="color:#888;">الراتب:</span> <strong style="color:var(--gold);">' + Utils.fmtNum(e.basic_salary) + '</strong></div>' +
+            '<div><span style="color:#888;">حضور:</span> <strong style="color:var(--green-2);">' + empPresent + '</strong></div>' +
+            '<div><span style="color:#888;">تأخير:</span> <strong style="color:var(--orange-2);">' + empLate + ' د</strong></div>' +
+          '</div>' +
+          (netSalary ? '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #222;font-size:12px;"><span style="color:#888;">صافي الشهر:</span> <strong style="color:var(--green-2);">' + Utils.fmtMoney(netSalary) + '</strong></div>' : '') +
+        '</div>';
+      }
     }
     html += '</div>';
+
     el.innerHTML = html;
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 📅 الإجازات والأذونات
+  // ═══════════════════════════════════════════════════════════════════
   renderLeaves() {
     const el = document.getElementById('hr-leaves');
     if (!el) return;
-    const leaves = (cache.leaves || []).slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); }).slice(0, 50);
-    let html = '<div class="card"><h3>📅 الإجازات والأذونات</h3>';
-    if (leaves.length === 0) html += '<p style="color:#666;">لا توجد سجلات</p>';
-    const typeMap = { 'leave': '📅 إجازة', 'permission': '⏰ إذن', 'mission': '🚗 مأمورية' };
-    for (const l of leaves) {
-      html += '<div style="padding:10px 0;border-bottom:1px solid #222;">' +
-        '<div style="display:flex;justify-content:space-between;">' +
-          '<strong style="color:var(--gold);">' + Utils.esc(l.employee_name) + '</strong>' +
-          '<span style="color:var(--blue-2);">' + (typeMap[l.type] || l.type) + '</span>' +
-        '</div>' +
-        '<div style="font-size:12px;color:#aaa;margin-top:4px;">' + Utils.esc(l.date) + ' | ' + Utils.esc(l.from || '') + ' - ' + Utils.esc(l.to || '') + '</div>' +
-        (l.reason ? '<div style="font-size:12px;color:#888;margin-top:4px;">' + Utils.esc(l.reason) + '</div>' : '') +
-      '</div>';
+
+    let leaves = (cache.leaves || []).slice();
+
+    // ⚠️ البحث
+    if (HR._leaveFilters.search) {
+      const search = HR._leaveFilters.search.toLowerCase();
+      leaves = leaves.filter(function (l) {
+        return (l.employee_name || '').toLowerCase().includes(search) ||
+               (l.reason || '').toLowerCase().includes(search);
+      });
+    }
+
+    // ⚠️ فلتر النوع
+    if (HR._leaveFilters.type !== 'all') {
+      leaves = leaves.filter(function (l) { return l.type === HR._leaveFilters.type; });
+    }
+
+    // ⚠️ فلتر التاريخ
+    if (HR._leaveFilters.from && HR._leaveFilters.to) {
+      leaves = leaves.filter(function (l) {
+        return l.date >= HR._leaveFilters.from && l.date <= HR._leaveFilters.to;
+      });
+    }
+
+    // ⚠️ ترتيب
+    leaves.sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+
+    const typeMap = { 'leave': { label: '📅 إجازة', color: 'var(--blue-2)' }, 'permission': { label: '⏰ إذن', color: 'var(--orange-2)' }, 'mission': { label: '🚗 مأمورية', color: 'var(--purple-2)' } };
+
+    let html = '';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 🔍 البحث والفلترة
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="search-bar">' +
+      '<span>🔍</span>' +
+      '<input type="text" placeholder="ابحث بالاسم أو السبب..." value="' + Utils.esc(HR._leaveFilters.search) + '" oninput="HR._leaveFilters.search=this.value;HR.renderLeaves()">' +
+    '</div>';
+
+    html += '<div style="padding:0 12px;margin-bottom:8px;display:flex;gap:6px;overflow-x:auto;">' +
+      '<button class="btn btn-sm ' + (HR._leaveFilters.type === 'all' ? 'btn-primary' : 'btn-outline') + '" onclick="HR._leaveFilters.type=\'all\';HR.renderLeaves()">📋 الكل</button>' +
+      '<button class="btn btn-sm ' + (HR._leaveFilters.type === 'leave' ? 'btn-primary' : 'btn-outline') + '" onclick="HR._leaveFilters.type=\'leave\';HR.renderLeaves()">📅 إجازة</button>' +
+      '<button class="btn btn-sm ' + (HR._leaveFilters.type === 'permission' ? 'btn-primary' : 'btn-outline') + '" onclick="HR._leaveFilters.type=\'permission\';HR.renderLeaves()">⏰ إذن</button>' +
+      '<button class="btn btn-sm ' + (HR._leaveFilters.type === 'mission' ? 'btn-primary' : 'btn-outline') + '" onclick="HR._leaveFilters.type=\'mission\';HR.renderLeaves()">🚗 مأمورية</button>' +
+    '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // ➕ زر الإضافة
+    // ═══════════════════════════════════════════════════════════════
+    html += '<button class="btn btn-primary btn-full" style="margin:10px 12px;width:calc(100% - 24px);" onclick="HR.addLeave()">➕ إضافة إجازة/إذن</button>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📜 قائمة الإجازات
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card"><h3>📅 الإجازات والأذونات (' + leaves.length + ')</h3>';
+
+    if (leaves.length === 0) {
+      html += '<div class="empty"><div class="ico">📅</div>لا توجد سجلات</div>';
+    } else {
+      for (const l of leaves) {
+        const typeInfo = typeMap[l.type] || { label: l.type, color: '#888' };
+        html += '<div style="padding:10px;border-bottom:1px solid #222;border-right:3px solid ' + typeInfo.color + ';border-radius:8px;margin-bottom:6px;background:rgba(0,0,0,.2);">' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:6px;">' +
+            '<div>' +
+              '<strong style="color:var(--gold);font-size:14px;">' + Utils.esc(l.employee_name || '-') + '</strong>' +
+              '<span style="font-size:11px;color:' + typeInfo.color + ';margin-right:8px;">' + typeInfo.label + '</span>' +
+            '</div>' +
+            '<span style="font-size:11px;color:#888;">' + Utils.fmtDate(l.date) + '</span>' +
+          '</div>' +
+          (l.from || l.to ? '<div style="font-size:11px;color:#aaa;margin-bottom:4px;">🕐 ' + Utils.esc(l.from || '') + ' - ' + Utils.esc(l.to || '') + '</div>' : '') +
+          (l.reason ? '<div style="font-size:12px;color:#ccc;margin-bottom:6px;">📝 ' + Utils.esc(l.reason) + '</div>' : '') +
+          '<div style="display:flex;gap:6px;justify-content:flex-end;">' +
+            (can('hr_manage') ? '<button class="btn btn-danger btn-sm" onclick="HR.removeLeave(\'' + l.id + '\')">🗑️ حذف</button>' : '') +
+          '</div>' +
+        '</div>';
+      }
     }
     html += '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📤 تصدير
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card"><h3>📤 تصدير</h3>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+        '<button class="btn btn-primary" onclick="HR.exportLeavesExcel()">📊 Excel</button>' +
+        '<button class="btn btn-info" onclick="HR.exportLeavesPDF()">📄 PDF</button>' +
+      '</div>' +
+    '</div>';
+
     el.innerHTML = html;
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 💰 السلف
+  // ═══════════════════════════════════════════════════════════════════
   renderAdvances() {
     const el = document.getElementById('hr-advances');
     if (!el) return;
-    const transactions = (cache.employee_transactions || []).filter(function (t) { return t.type === 'advance'; })
-      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); }).slice(0, 50);
-    let html = '<div class="card"><h3>💰 السلف</h3>' +
-      '<button class="btn btn-primary btn-full" onclick="HR.addTransaction(\'advance\')" style="margin-bottom:10px;">➕ إضافة سلفة</button>';
-    if (transactions.length === 0) html += '<p style="color:#666;">لا توجد سلف</p>';
-    for (const t of transactions) {
-      html += '<div style="padding:10px 0;border-bottom:1px solid #222;">' +
-        '<div style="display:flex;justify-content:space-between;">' +
-          '<strong>' + Utils.esc(t.employee_name) + '</strong>' +
-          '<span style="color:var(--red-2);font-weight:700;">' + Utils.fmtMoney(t.amount) + '</span>' +
-        '</div>' +
-        '<div style="font-size:11px;color:#888;margin-top:4px;">' + Utils.fmtDate(t.date) + ' | ' + (t.paid ? 'مسددة ✓' : 'مستحقة') + '</div>' +
-      '</div>';
+
+    const transactions = (cache.employee_transactions || [])
+      .filter(function (t) { return t.type === 'advance'; })
+      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+
+    const totalAmount = transactions.reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+    const unpaidAmount = transactions.filter(function (t) { return !t.paid; })
+      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+    const paidAmount = totalAmount - unpaidAmount;
+
+    let html = '';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📊 الإحصائيات
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="stats-grid" style="padding:0;">' +
+      '<div class="stat-card red"><div class="label">إجمالي السلف</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(totalAmount) + '</div></div>' +
+      '<div class="stat-card orange"><div class="label">غير مسددة</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(unpaidAmount) + '</div></div>' +
+      '<div class="stat-card green"><div class="label">مسددة</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(paidAmount) + '</div></div>' +
+      '<div class="stat-card blue"><div class="label">عدد السلف</div><div class="value">' + transactions.length + '</div></div>' +
+    '</div>';
+
+    html += '<button class="btn btn-primary btn-full" style="margin:10px 12px;width:calc(100% - 24px);" onclick="HR.addTransaction(\'advance\')">➕ إضافة سلفة</button>';
+
+    html += '<div class="card"><h3>💰 السلف (' + transactions.length + ')</h3>';
+
+    if (transactions.length === 0) {
+      html += '<div class="empty"><div class="ico">💰</div>لا توجد سلف</div>';
+    } else {
+      for (const t of transactions) {
+        const statusColor = t.paid ? 'var(--green-2)' : 'var(--red-2)';
+        const statusLabel = t.paid ? '✓ مسددة' : '⚠️ مستحقة';
+        html += '<div style="padding:10px;border-bottom:1px solid #222;border-radius:8px;margin-bottom:6px;background:rgba(0,0,0,.2);">' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
+            '<strong style="color:var(--gold);font-size:14px;">' + Utils.esc(t.employee_name || '-') + '</strong>' +
+            '<span style="font-weight:800;color:var(--red-2);font-size:15px;">' + Utils.fmtMoney(t.amount) + '</span>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:11px;">' +
+            '<span style="color:#888;">📅 ' + Utils.fmtDate(t.date) + '</span>' +
+            '<span style="color:' + statusColor + ';font-weight:700;">' + statusLabel + '</span>' +
+          '</div>' +
+          (t.reason ? '<div style="font-size:11px;color:#aaa;margin-top:4px;">📝 ' + Utils.esc(t.reason) + '</div>' : '') +
+        '</div>';
+      }
     }
     html += '</div>';
+
     el.innerHTML = html;
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 🎁 المكافآت
+  // ═══════════════════════════════════════════════════════════════════
   renderBonuses() {
     const el = document.getElementById('hr-bonuses');
     if (!el) return;
-    const transactions = (cache.employee_transactions || []).filter(function (t) {
-      return t.type === 'bonus' || t.type === 'deduction';
-    }).sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); }).slice(0, 50);
-    let html = '<div class="card"><h3>🎁 المكافآت والخصومات</h3>' +
-      '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
-        '<button class="btn btn-success btn-full" onclick="HR.addTransaction(\'bonus\')">➕ مكافأة</button>' +
-        '<button class="btn btn-danger btn-full" onclick="HR.addTransaction(\'deduction\')">➖ خصم</button>' +
-      '</div>';
-    if (transactions.length === 0) html += '<p style="color:#666;">لا توجد سجلات</p>';
-    for (const t of transactions) {
-      const color = t.type === 'bonus' ? 'var(--green-2)' : 'var(--red-2)';
-      const label = t.type === 'bonus' ? '🎁 مكافأة' : '➖ خصم';
-      html += '<div style="padding:10px 0;border-bottom:1px solid #222;">' +
-        '<div style="display:flex;justify-content:space-between;">' +
-          '<strong>' + Utils.esc(t.employee_name) + '</strong>' +
-          '<span style="color:' + color + ';font-weight:700;">' + Utils.fmtMoney(t.amount) + '</span>' +
-        '</div>' +
-        '<div style="font-size:11px;color:#888;margin-top:4px;">' + label + ' | ' + Utils.fmtDate(t.date) + '</div>' +
-        (t.reason ? '<div style="font-size:11px;color:#aaa;margin-top:4px;">' + Utils.esc(t.reason) + '</div>' : '') +
-      '</div>';
+
+    const transactions = (cache.employee_transactions || [])
+      .filter(function (t) { return t.type === 'bonus'; })
+      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+
+    const totalAmount = transactions.reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+
+    let html = '';
+
+    html += '<div class="stats-grid" style="padding:0;">' +
+      '<div class="stat-card green"><div class="label">إجمالي المكافآت</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(totalAmount) + '</div></div>' +
+      '<div class="stat-card blue"><div class="label">عدد المكافآت</div><div class="value">' + transactions.length + '</div></div>' +
+    '</div>';
+
+    html += '<button class="btn btn-success btn-full" style="margin:10px 12px;width:calc(100% - 24px);" onclick="HR.addTransaction(\'bonus\')">➕ إضافة مكافأة</button>';
+
+    html += '<div class="card"><h3>🎁 المكافآت (' + transactions.length + ')</h3>';
+
+    if (transactions.length === 0) {
+      html += '<div class="empty"><div class="ico">🎁</div>لا توجد مكافآت</div>';
+    } else {
+      for (const t of transactions) {
+        html += '<div style="padding:10px;border-bottom:1px solid #222;border-right:3px solid var(--green-2);border-radius:8px;margin-bottom:6px;background:rgba(76,175,80,.05);">' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
+            '<strong style="color:var(--gold);font-size:14px;">' + Utils.esc(t.employee_name || '-') + '</strong>' +
+            '<span style="font-weight:800;color:var(--green-2);font-size:15px;">+' + Utils.fmtMoney(t.amount) + '</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:#888;">📅 ' + Utils.fmtDate(t.date) + '</div>' +
+          (t.reason ? '<div style="font-size:11px;color:#aaa;margin-top:4px;">📝 ' + Utils.esc(t.reason) + '</div>' : '') +
+        '</div>';
+      }
     }
     html += '</div>';
+
     el.innerHTML = html;
   },
 
-  async addTransaction(type) {
+  // ═══════════════════════════════════════════════════════════════════
+  // ➖ الخصومات
+  // ═══════════════════════════════════════════════════════════════════
+  renderDeductions() {
+    const el = document.getElementById('hr-deductions');
+    if (!el) return;
+
+    const transactions = (cache.employee_transactions || [])
+      .filter(function (t) { return t.type === 'deduction'; })
+      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+
+    const totalAmount = transactions.reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+
+    let html = '';
+
+    html += '<div class="stats-grid" style="padding:0;">' +
+      '<div class="stat-card red"><div class="label">إجمالي الخصومات</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(totalAmount) + '</div></div>' +
+      '<div class="stat-card blue"><div class="label">عدد الخصومات</div><div class="value">' + transactions.length + '</div></div>' +
+    '</div>';
+
+    html += '<button class="btn btn-danger btn-full" style="margin:10px 12px;width:calc(100% - 24px);" onclick="HR.addTransaction(\'deduction\')">➕ إضافة خصم</button>';
+
+    html += '<div class="card"><h3>➖ الخصومات (' + transactions.length + ')</h3>';
+
+    if (transactions.length === 0) {
+      html += '<div class="empty"><div class="ico">➖</div>لا توجد خصومات</div>';
+    } else {
+      for (const t of transactions) {
+        html += '<div style="padding:10px;border-bottom:1px solid #222;border-right:3px solid var(--red-2);border-radius:8px;margin-bottom:6px;background:rgba(244,67,54,.05);">' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
+            '<strong style="color:var(--gold);font-size:14px;">' + Utils.esc(t.employee_name || '-') + '</strong>' +
+            '<span style="font-weight:800;color:var(--red-2);font-size:15px;">-' + Utils.fmtMoney(t.amount) + '</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:#888;">📅 ' + Utils.fmtDate(t.date) + '</div>' +
+          (t.reason ? '<div style="font-size:11px;color:#aaa;margin-top:4px;">📝 ' + Utils.esc(t.reason) + '</div>' : '') +
+        '</div>';
+      }
+    }
+    html += '</div>';
+
+    el.innerHTML = html;
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // ➕ إضافة إجازة
+  // ═══════════════════════════════════════════════════════════════════
+  async addLeave(empUid) {
     if (!requirePermission('hr_manage', 'إدارة HR')) return;
+
     const emps = (cache.employees || []).filter(function (e) { return e.active !== false; });
-    const titles = { advance: '💰 إضافة سلفة', bonus: '🎁 إضافة مكافأة', deduction: '➖ إضافة خصم' };
+
     const html =
-      '<div class="form-group"><label>الموظف *</label><select id="hr_emp">' +
-        emps.map(function (e) { return '<option value="' + e.uid + '">' + Utils.esc(e.name) + '</option>'; }).join('') +
-      '</select></div>' +
-      '<div class="form-group"><label>المبلغ *</label><input type="number" id="hr_amount" inputmode="decimal"></div>' +
-      '<div class="form-group"><label>التاريخ</label><input type="date" id="hr_date" value="' + Utils.todayStr() + '"></div>' +
-      '<div class="form-group"><label>السبب / البيان</label><textarea id="hr_reason" rows="3"></textarea></div>' +
-      '<div class="info-box">💡 هذه المعاملة لا تؤثر على الخزينة. لتأثير على الخزينة، استخدم سند صرف.</div>';
-    Modal.open(titles[type] || 'إضافة', html, async function () {
-      const empUid = document.getElementById('hr_emp').value;
-      const amount = parseFloat(document.getElementById('hr_amount').value) || 0;
-      if (!empUid) return Toast.show('اختر موظف', 'error');
-      if (amount <= 0) return Toast.show('مبلغ غير صالح', 'error');
-      const emp = emps.find(function (e) { return e.uid === empUid; });
-      const id = Utils.genId(type.toUpperCase());
-      await Sync.save('employee_transactions', id, {
-        id: id, type: type, employee_uid: empUid, employee_name: emp.name,
-        amount: amount, reason: document.getElementById('hr_reason').value,
-        date: document.getElementById('hr_date').value, paid: false,
-        created_by: State.currentEmployee.name, created_at: Utils.nowISO()
+      '<div class="form-group"><label>الموظف *</label>' +
+        '<select id="leave_emp" ' + (empUid ? 'disabled' : '') + '>' +
+          emps.map(function (e) {
+            return '<option value="' + e.uid + '"' + (e.uid === empUid ? ' selected' : '') + '>' + Utils.esc(e.name) + '</option>';
+          }).join('') +
+        '</select>' +
+      '</div>' +
+      '<div class="form-group"><label>النوع *</label>' +
+        '<select id="leave_type">' +
+          '<option value="leave">📅 إجازة</option>' +
+          '<option value="permission">⏰ إذن</option>' +
+          '<option value="mission">🚗 مأمورية</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="form-group"><label>التاريخ *</label>' +
+        '<input type="date" id="leave_date" value="' + Utils.todayStr() + '">' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<div class="form-group" style="flex:1;"><label>من ساعة</label><input type="time" id="leave_from" value="09:00"></div>' +
+        '<div class="form-group" style="flex:1;"><label>إلى ساعة</label><input type="time" id="leave_to" value="17:00"></div>' +
+      '</div>' +
+      '<div class="form-group"><label>السبب</label><textarea id="leave_reason" rows="3" placeholder="سبب الإجازة..."></textarea></div>' +
+      '<div class="info-box" style="font-size:12px;">' +
+        '💡 لو النوع "إجازة"، سيتم تسجيلها في الحضور كيوم إجازة.<br>' +
+        'لو "إذن" أو "مأمورية"، سيتم تسجيلها فقط في سجل الإجازات.' +
+      '</div>';
+
+    Modal.open('📅 إضافة إجازة/إذن', html, async function () {
+      const empUidValue = empUid || document.getElementById('leave_emp').value;
+      const type = document.getElementById('leave_type').value;
+      const date = document.getElementById('leave_date').value;
+      const from = document.getElementById('leave_from').value;
+      const to = document.getElementById('leave_to').value;
+      const reason = document.getElementById('leave_reason').value.trim();
+
+      if (!empUidValue) return Toast.show('اختر موظف', 'error');
+      if (!date) return Toast.show('اختر تاريخ', 'error');
+
+      const emp = emps.find(function (e) { return e.uid === empUidValue; });
+      const id = Utils.genId('LV');
+
+      await Sync.save('leaves', id, {
+        id: id,
+        employee_uid: empUidValue,
+        employee_name: emp ? emp.name : '',
+        type: type,
+        date: date,
+        from: from,
+        to: to,
+        reason: reason,
+        approved: true,
+        created_at: Utils.nowISO(),
+        created_by: State.currentEmployee.name
       });
-      await Activity.log('hr_update', type + ': ' + emp.name + ' - ' + Utils.fmtMoney(amount));
+
+      // ⚠️ لو إجازة، سجلها في الحضور
+      if (type === 'leave') {
+        const attId = Utils.genId('ATT');
+        await Sync.save('attendance', attId, {
+          id: attId,
+          employee_uid: empUidValue,
+          employee_name: emp ? emp.name : '',
+          date: date,
+          status: 'leave',
+          work_hours: 0,
+          notes: reason,
+          recorded_by: State.currentEmployee.name
+        });
+      }
+
+      await Activity.log('leave', type + ': ' + (emp ? emp.name : '') + ' - ' + date);
       Modal.close();
       Toast.show('✅ تم التسجيل');
       HR.render();
     });
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🗑️ حذف إجازة
+  // ═══════════════════════════════════════════════════════════════════
+  async removeLeave(id) {
+    if (!requirePermission('hr_manage', 'إدارة HR')) return;
+    if (!confirm('حذف الإجازة؟')) return;
+
+    const leave = (cache.leaves || []).find(function (l) { return l.id === id; });
+    if (!leave) return;
+
+    await Sync.softDelete('leaves', id);
+
+    // ⚠️ لو إجازة، شيل الحضور المرتبط
+    if (leave.type === 'leave') {
+      const att = (cache.attendance || []).find(function (a) {
+        return a.employee_uid === leave.employee_uid && a.date === leave.date && a.status === 'leave';
+      });
+      if (att) await Sync.softDelete('attendance', att.id);
+    }
+
+    Toast.show('تم الحذف');
+    HR.render();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // ➕ إضافة معاملة (سلفة، مكافأة، خصم)
+  // ═══════════════════════════════════════════════════════════════════
+  async addTransaction(type) {
+    if (!requirePermission('hr_manage', 'إدارة HR')) return;
+
+    const emps = (cache.employees || []).filter(function (e) { return e.active !== false; });
+    const titles = { advance: '💰 إضافة سلفة', bonus: '🎁 إضافة مكافأة', deduction: '➖ إضافة خصم' };
+
+    const html =
+      '<div class="form-group"><label>الموظف *</label>' +
+        '<select id="hr_emp">' +
+          emps.map(function (e) {
+            return '<option value="' + e.uid + '">' + Utils.esc(e.name) + '</option>';
+          }).join('') +
+        '</select>' +
+      '</div>' +
+      '<div class="form-group"><label>المبلغ *</label>' +
+        '<input type="number" id="hr_amount" inputmode="decimal" step="any" autofocus>' +
+      '</div>' +
+      '<div class="form-group"><label>التاريخ *</label>' +
+        '<input type="date" id="hr_date" value="' + Utils.todayStr() + '">' +
+      '</div>' +
+      '<div class="form-group"><label>السبب / البيان</label>' +
+        '<textarea id="hr_reason" rows="3" placeholder="اكتب سبب ' + (titles[type] || '').split(' ').slice(1).join(' ') + '..."></textarea>' +
+      '</div>' +
+      '<div class="info-box" style="font-size:12px;">' +
+        '💡 هذه المعاملة لا تؤثر مباشرة على الخزينة.<br>' +
+        'تُخصم/تُضاف عند إنشاء المرتب الشهري.' +
+      '</div>';
+
+    Modal.open(titles[type] || 'إضافة', html, async function () {
+      const empUid = document.getElementById('hr_emp').value;
+      const amount = parseFloat(document.getElementById('hr_amount').value) || 0;
+      const date = document.getElementById('hr_date').value;
+      const reason = document.getElementById('hr_reason').value.trim();
+
+      if (!empUid) return Toast.show('اختر موظف', 'error');
+      if (amount <= 0) return Toast.show('أدخل مبلغ صحيح', 'error');
+      if (!date) return Toast.show('اختر تاريخ', 'error');
+
+      const emp = emps.find(function (e) { return e.uid === empUid; });
+      const id = Utils.genId(type.toUpperCase());
+
+      await Sync.save('employee_transactions', id, {
+        id: id,
+        type: type,
+        employee_uid: empUid,
+        employee_name: emp ? emp.name : '',
+        amount: amount,
+        reason: reason,
+        date: date,
+        paid: false,
+        created_by: State.currentEmployee.name,
+        created_at: Utils.nowISO()
+      });
+
+      await Activity.log('hr_update', type + ': ' + (emp ? emp.name : '') + ' - ' + Utils.fmtMoney(amount));
+      Modal.close();
+      Toast.show('✅ تم التسجيل');
+      HR.render();
+    });
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📤 تصدير الإجازات
+  // ═══════════════════════════════════════════════════════════════════
+  exportLeavesExcel() {
+    const leaves = (cache.leaves || []).slice();
+
+    const items = leaves.map(function (l) {
+      return {
+        product_name: (l.employee_name || '-') + ' - ' + (l.type || '-'),
+        quantity: 1,
+        price: 0,
+        total: 0
+      };
+    });
+
+    const doc = {
+      invoice_no: 'LEAVES-REP-' + Date.now(),
+      date: Utils.nowISO(),
+      party_name: 'تقرير الإجازات والأذونات',
+      subtotal: 0, discount: 0, tax: 0, total: 0, paid: 0, remaining: 0
+    };
+
+    Export.toExcel(doc, items, 'sales');
+  },
+
+  async exportLeavesPDF() {
+    const leaves = (cache.leaves || []).slice();
+
+    const items = leaves.map(function (l) {
+      return {
+        product_name: (l.employee_name || '-') + ' - ' + (l.type || '-') + ' - ' + (l.date || '-'),
+        quantity: 1,
+        price: 0,
+        total: 0
+      };
+    });
+
+    const doc = {
+      invoice_no: 'LEAVES-PDF-' + Date.now(),
+      date: Utils.nowISO(),
+      party_name: 'تقرير الإجازات والأذونات',
+      subtotal: 0, discount: 0, tax: 0, total: 0, paid: 0, remaining: 0
+    };
+
+    await Export.toPDF(doc, items, 'sales');
   }
 };
 
