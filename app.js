@@ -421,9 +421,14 @@ function requirePermission(permission, action) {
    4. Utils
    ═══════════════════════════════════════════════════════════════════ */
 const Utils = {
-  fmtMoney(v) { return (Number(v) || 0).toFixed(2) + ' ' + CURRENCY; },
-  fmtNum(v) { return (Number(v) || 0).toFixed(2); },
-  fmtInt(v) { return String(parseInt(v) || 0); },
+  _toNumber(v) {
+    if (v === null || v === undefined || v === '') return 0;
+    const n = Number(v);
+    return isNaN(n) ? 0 : n;
+  },
+  fmtMoney(v) { return Utils._toNumber(v).toFixed(2) + ' ' + CURRENCY; },
+  fmtNum(v) { return Utils._toNumber(v).toFixed(2); },
+  fmtInt(v) { return String(parseInt(Utils._toNumber(v), 10)); },
   fmtDate(d) {
     if (!d) return '-';
     try {
@@ -510,7 +515,6 @@ const Utils = {
     const diff = Math.floor((ci.getTime() - expected.getTime()) / 60000);
     return diff > 0 ? diff : 0;
   },
-  // ⚠️ حساب إجمالي عناصر الفاتورة بأمان
   calcItemsTotal(items) {
     if (!Array.isArray(items)) return 0;
     let total = 0;
@@ -523,27 +527,8 @@ const Utils = {
     }
     return total;
   },
-  // ⚠️ حساب إجمالي مع خصم وضريبة
   calcInvoiceTotal(subtotal, discount, tax) {
     return (Number(subtotal) || 0) - (Number(discount) || 0) + (Number(tax) || 0);
-  }
-};
-
-/* ═══════════════════════════════════════════════════════════════════
-   5. Toast Notifications
-   ═══════════════════════════════════════════════════════════════════ */
-const Toast = {
-  show(msg, type) {
-    type = type || 'success';
-    try {
-      const t = document.createElement('div');
-      t.className = 'toast ' + type;
-      t.textContent = msg;
-      document.body.appendChild(t);
-      setTimeout(function () { if (t && t.remove) t.remove(); }, 3200);
-      if (type === 'error') Utils.vibrate([100, 50, 100]);
-      else if (type === 'success') Utils.vibrate(60);
-    } catch (e) { console.log('Toast:', msg); }
   }
 };
 
@@ -821,7 +806,7 @@ const Activity = {
 
 /* ═══════════════════════════════════════════════════════════════════
    9. Biometric (3-Tier: Cordova → WebAuthn → PIN)
-   ⚠️ تم إصلاح ثغرة PIN الافتراضي '0000'
+   ⚠️ إصلاح: PIN الافتراضي '0000' أُزيل — يجب تعيين PIN أول مرة
    ═══════════════════════════════════════════════════════════════════ */
 const Biometric = {
 
@@ -830,20 +815,14 @@ const Biometric = {
   // ═══════════════════════════════════════════════════════════════════
   async verify(reason) {
     reason = reason || 'تأكيد الهوية';
-
-    // الطبقة 1: Cordova Fingerprint (لو موجود)
     if (window.Fingerprint && typeof Fingerprint.isAvailable === 'function') {
       const ok = await Biometric.cordovaFingerprint(reason);
       if (ok) return true;
     }
-
-    // الطبقة 2: WebAuthn (لو المتصفح يدعم)
     if (window.PublicKeyCredential) {
       const ok = await Biometric.webauthn(reason);
       if (ok) return true;
     }
-
-    // الطبقة 3: PIN Fallback
     return await Biometric.pinFallback(reason);
   },
 
@@ -867,14 +846,12 @@ const Biometric = {
             resolve(true);
           }, function () { resolve(false); });
         }, function () { resolve(false); });
-      } catch (e) {
-        resolve(false);
-      }
+      } catch (e) { resolve(false); }
     });
   },
 
   // ═══════════════════════════════════════════════════════════════════
-  // 3) webauthn — بصمة الويب (يحتاج HTTPS + تسجيل مسبق)
+  // 3) webauthn — بصمة الويب (مؤجل)
   // ═══════════════════════════════════════════════════════════════════
   async webauthn(reason) {
     try {
@@ -883,11 +860,8 @@ const Biometric = {
         const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
         if (!available) return false;
       }
-      // ⚠️ WebAuthn يحتاج تسجيل مسبق — لا نستخدمه حالياً
       return false;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   },
 
   // ═══════════════════════════════════════════════════════════════════
@@ -897,7 +871,6 @@ const Biometric = {
     return new Promise(function (resolve) {
       State.pinBuffer = '';
       State.pinCallback = resolve;
-
       const html =
         '<div style="text-align:center;">' +
           '<p style="color:var(--text-2);margin-bottom:12px;">' + Utils.esc(reason) + '</p>' +
@@ -920,14 +893,12 @@ const Biometric = {
             '<button class="pin-btn del" onclick="Biometric.pinDelete()">⌫</button>' +
           '</div>' +
         '</div>';
-
       Modal.open('🔒 تأكيد', html, null, 'إلغاء');
     });
   },
 
   // ═══════════════════════════════════════════════════════════════════
-  // 5) pinPress — [معدّلة] ضغط أرقام أثناء التحقق
-  //    ⚠️ الإصلاح: لو مفيش PIN مسجّل → يطلب تعيين واحد جديد
+  // 5) pinPress — [معدّلة] بدون PIN افتراضي
   // ═══════════════════════════════════════════════════════════════════
   pinPress(digit) {
     if (State.pinBuffer.length >= 4) return;
@@ -946,7 +917,6 @@ const Biometric = {
           State.pinBuffer = '';
           Biometric.updatePinDisplay();
           Modal.close();
-
           setTimeout(function () {
             Biometric.setupPin(function (success) {
               if (State.pinCallback) {
@@ -959,7 +929,6 @@ const Biometric = {
           return;
         }
 
-        // ⚠️ PIN صحيح
         if (State.pinBuffer === storedPin) {
           Utils.vibrate(80);
           Modal.close();
@@ -969,7 +938,6 @@ const Biometric = {
             cb(true);
           }
         } else {
-          // ⚠️ PIN خاطئ
           Toast.show('❌ PIN خاطئ', 'error');
           State.pinBuffer = '';
           Biometric.updatePinDisplay();
@@ -981,12 +949,11 @@ const Biometric = {
 
   // ═══════════════════════════════════════════════════════════════════
   // 6) setupPin — [جديد] تعيين PIN لأول مرة
-  //    بيشتغل على مرحلتين: إدخال + تأكيد
   // ═══════════════════════════════════════════════════════════════════
   setupPin(callback) {
     State._newPinBuffer = '';
     State._newPinConfirm = '';
-    State._newPinStage = 'first'; // 'first' | 'confirm'
+    State._newPinStage = 'first';
     State._setupPinCallback = callback || null;
 
     const isFirst = State._newPinStage === 'first';
@@ -1024,14 +991,12 @@ const Biometric = {
   // 7) setupPinPress — [جديد] ضغط أرقام أثناء التعيين
   // ═══════════════════════════════════════════════════════════════════
   setupPinPress(digit) {
-    // ═══ المرحلة الأولى: إدخال PIN جديد ═══
     if (State._newPinStage === 'first') {
       if (State._newPinBuffer.length >= 4) return;
       State._newPinBuffer += digit;
       Utils.vibrate(30);
       Biometric.updateSetupDisplay();
 
-      // خلص 4 أرقام → انتقل لمرحلة التأكيد
       if (State._newPinBuffer.length === 4) {
         setTimeout(function () {
           State._newPinStage = 'confirm';
@@ -1042,7 +1007,6 @@ const Biometric = {
       return;
     }
 
-    // ═══ المرحلة الثانية: تأكيد PIN ═══
     if (State._newPinConfirm.length >= 4) return;
     State._newPinConfirm += digit;
     Utils.vibrate(30);
@@ -1050,7 +1014,6 @@ const Biometric = {
 
     if (State._newPinConfirm.length === 4) {
       setTimeout(function () {
-        // ═══ تطابق → احفظ ═══
         if (State._newPinBuffer === State._newPinConfirm) {
           const uid = State.currentUser ? State.currentUser.uid : 'x';
           try {
@@ -1070,7 +1033,6 @@ const Biometric = {
             Toast.show('❌ فشل الحفظ: ' + e.message, 'error');
           }
         } else {
-          // ═══ مش متطابق → أعد من البداية ═══
           Toast.show('❌ الأرقام غير متطابقة — أعد المحاولة', 'error');
           Utils.vibrate([100, 50, 100]);
           State._newPinBuffer = '';
@@ -1095,7 +1057,7 @@ const Biometric = {
   },
 
   // ═══════════════════════════════════════════════════════════════════
-  // 9) updateSetupDisplay — [جديد] تحديث نقاط العرض أثناء التعيين
+  // 9) updateSetupDisplay — [جديد] تحديث نقاط أثناء التعيين
   // ═══════════════════════════════════════════════════════════════════
   updateSetupDisplay() {
     const currentBuffer = State._newPinStage === 'first'
@@ -1117,7 +1079,7 @@ const Biometric = {
   },
 
   // ═══════════════════════════════════════════════════════════════════
-  // 11) updatePinDisplay — تحديث نقاط العرض أثناء التحقق
+  // 11) updatePinDisplay — تحديث نقاط أثناء التحقق
   // ═══════════════════════════════════════════════════════════════════
   updatePinDisplay() {
     const dots = document.querySelectorAll('#pinDisplay .pin-dot');
