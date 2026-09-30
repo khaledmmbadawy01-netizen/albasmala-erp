@@ -2677,15 +2677,38 @@ body::after {
        📋 صفحة الفواتير
        ═══════════════════════════════════════════════════════════════ -->
   <div id="page-invoices" class="page hidden">
-    <div class="tabs">
-      <div class="tab active" onclick="Invoices.switchTab(event,'sales')">المبيعات</div>
-      <div class="tab" onclick="Invoices.switchTab(event,'purchase')">المشتريات</div>
-    </div>
-    <div class="search-bar">
-      <span>🔍</span>
-      <input type="text" id="invSearch" placeholder="ابحث برقم الفاتورة..." oninput="Invoices.load()">
-    </div>
-    <div id="invList"></div>
+  <div class="tabs">
+    <div class="tab active" onclick="Invoices.switchTab(event,'sales')">🛒 المبيعات</div>
+    <div class="tab" onclick="Invoices.switchTab(event,'purchase')">📦 المشتريات</div>
+  </div>
+
+  <!-- ⚠️ الإحصائيات -->
+  <div id="invStats" class="stats-grid"></div>
+
+  <!-- ⚠️ البحث -->
+  <div class="search-bar">
+    <span>🔍</span>
+    <input type="text" id="invSearch" placeholder="ابحث بالرقم أو اسم الجهة..." oninput="Invoices.load()">
+  </div>
+
+  <!-- ⚠️ فلتر الحالة -->
+  <div style="padding:0 12px;margin-bottom:8px;display:flex;gap:6px;overflow-x:auto;" id="invStatusFilter">
+    <button class="btn btn-sm btn-primary filter-btn active" data-status="all" onclick="Invoices.setStatusFilter('all')">📋 الكل</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-status="paid" onclick="Invoices.setStatusFilter('paid')">✓ مدفوعة</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-status="partial" onclick="Invoices.setStatusFilter('partial')">⏳ جزئي</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-status="unpaid" onclick="Invoices.setStatusFilter('unpaid')">⚠️ آجلة</button>
+  </div>
+
+  <!-- ⚠️ فلتر التاريخ -->
+  <div class="search-bar" style="margin-top:0;">
+    <span>📅</span>
+    <input type="date" id="invFrom" onchange="Invoices.setDateFilter(this.value, document.getElementById('invTo').value)">
+    <input type="date" id="invTo" onchange="Invoices.setDateFilter(document.getElementById('invFrom').value, this.value)">
+    <button class="btn btn-outline btn-sm" onclick="document.getElementById('invFrom').value='';document.getElementById('invTo').value='';Invoices.setDateFilter('','')">🔄</button>
+  </div>
+
+  <!-- ⚠️ قائمة الفواتير -->
+  <div id="invList"></div>
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
