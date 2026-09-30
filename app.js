@@ -6966,116 +6966,398 @@ const Vouchers = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
-   33. Cash
+   33. Cash — الخزينة مع فلاتر متقدمة
    ═══════════════════════════════════════════════════════════════════ */
 const Cash = {
+  // ⚠️ حالة الفلاتر
+  _filters: {
+    search: '',
+    account: 'all',
+    type: 'all', // all | in | out
+    source: 'all', // all | invoice | voucher | salary | return | other
+    from: '',
+    to: ''
+  },
+  _displayLimit: 100,
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔄 إعادة الرسم
+  // ═══════════════════════════════════════════════════════════════════
   render() {
-  const fromEl = document.getElementById('cashFrom');
-  const toEl = document.getElementById('cashTo');
-  const from = fromEl ? fromEl.value : '';
-  const to = toEl ? toEl.value : '';
-  let cash = (cache.cash_transactions || []).slice();
-  if (from && to) {
-    cash = cash.filter(function (c) {
-      return c.date && c.date.split('T')[0] >= from && c.date.split('T')[0] <= to;
+    const fromEl = document.getElementById('cashFrom');
+    const toEl = document.getElementById('cashTo');
+    const accEl = document.getElementById('cashAccountFilter');
+
+    // ⚠️ قراءة الفلاتر من الواجهة
+    if (fromEl) Cash._filters.from = fromEl.value || '';
+    if (toEl) Cash._filters.to = toEl.value || '';
+    if (accEl) Cash._filters.account = accEl.value || 'all';
+
+    // ⚠️ تعبئة فلتر الحسابات (لو فاضي)
+    if (accEl && accEl.options.length <= 1) {
+      const accounts = getAllAccounts();
+      accEl.innerHTML = '<option value="all">💼 كل الحسابات</option>' +
+        accounts.map(function (a) {
+          return '<option value="' + a.id + '">' + a.icon + ' ' + Utils.esc(a.label) + '</option>';
+        }).join('');
+    }
+
+    // ⚠️ الفلترة
+    let allCash = (cache.cash_transactions || []).slice();
+
+    if (Cash._filters.from && Cash._filters.to) {
+      allCash = allCash.filter(function (c) {
+        const d = (c.date || '').split('T')[0];
+        return d >= Cash._filters.from && d <= Cash._filters.to;
+      });
+    }
+
+    if (Cash._filters.search) {
+      const search = Cash._filters.search.toLowerCase();
+      allCash = allCash.filter(function (c) {
+        return (c.description || '').toLowerCase().includes(search) ||
+               (c.reference || '').toLowerCase().includes(search);
+      });
+    }
+
+    if (Cash._filters.account !== 'all') {
+      allCash = allCash.filter(function (c) {
+        const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+        return accId === Cash._filters.account;
+      });
+    }
+
+    if (Cash._filters.type !== 'all') {
+      allCash = allCash.filter(function (c) { return c.type === Cash._filters.type; });
+    }
+
+    if (Cash._filters.source !== 'all') {
+      allCash = allCash.filter(function (c) {
+        const src = Cash._getSource(c);
+        return src === Cash._filters.source;
+      });
+    }
+
+    // ⚠️ ترتيب تنازلي
+    allCash.sort(function (a, b) {
+      return (b.date || '').localeCompare(a.date || '');
     });
-  }
-  cash.sort(function (a, b) {
-    return (b.date || '').localeCompare(a.date || '');
-  });
 
-  const allCash = cache.cash_transactions || [];
-
-  // ⚠️ حساب أرصدة كل حساب فرعي
-  const accountsBalances = {};
-  for (const acc of getAllAccounts()) {
-    accountsBalances[acc.id] = { account: acc, in: 0, out: 0, balance: 0 };
-  }
-
-  for (const c of allCash) {
-    // ⚠️ استخدام account_id لو موجود، أو methodToAccountId كـ fallback
-    const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
-    if (!accountsBalances[accId]) {
-      // ⚠️ لو الحساب مش معروف، نضيفه كحساب افتراضي
-      accountsBalances[accId] = {
-        account: { id: accId, label: accId, icon: '❓', color: 'var(--text-2)' },
-        in: 0, out: 0, balance: 0
-      };
-    }
-    if (c.type === 'in') {
-      accountsBalances[accId].in += Number(c.amount) || 0;
-    } else {
-      accountsBalances[accId].out += Number(c.amount) || 0;
-    }
-  }
-
-  // ⚠️ حساب الرصيد والإجماليات
-  let totalIn = 0, totalOut = 0, totalBalance = 0;
-  for (const id in accountsBalances) {
-    const acc = accountsBalances[id];
-    acc.balance = acc.in - acc.out;
-    totalIn += acc.in;
-    totalOut += acc.out;
-    totalBalance += acc.balance;
-  }
-
-  // ⚠️ ترتيب الحسابات حسب order
-  const accountsArr = Object.values(accountsBalances).sort(function (a, b) {
-    return (a.account.order || 99) - (b.account.order || 99);
-  });
-
-  // ⚠️ عرض الإحصائيات
-  const statsEl = document.getElementById('cashStats');
-  if (statsEl) {
-    let accountsCardsHtml = '';
-    for (const item of accountsArr) {
-      const acc = item.account;
-      const icon = acc.icon || '💰';
-      const label = acc.label || acc.id;
-      // ⚠️ نعرض الحساب بس لو فيه حركة أو رصيد
-      if (item.in === 0 && item.out === 0) continue;
-      accountsCardsHtml +=
-        '<div class="stat-card" style="border-right-color:' + (acc.color || 'var(--gold)') + ';">' +
-          '<div class="label">' + icon + ' ' + Utils.esc(label) + '</div>' +
-          '<div class="value" style="color:' + (acc.color || 'var(--gold)') + ';">' + Utils.fmtNum(item.balance) + '</div>' +
-          '<div class="sub-value" style="font-size:10px;">+' + Utils.fmtNum(item.in) + ' / -' + Utils.fmtNum(item.out) + '</div>' +
-        '</div>';
+    // ⚠️ حساب الأرصدة لكل حساب (من كل الحركات، مش المفلترة)
+    const accountsBalances = {};
+    for (const acc of getAllAccounts()) {
+      accountsBalances[acc.id] = { account: acc, in: 0, out: 0, balance: 0 };
     }
 
-    statsEl.innerHTML =
-      '<div class="stat-card green"><div class="label">إجمالي الواردات</div><div class="value">' + Utils.fmtNum(totalIn) + '</div></div>' +
-      '<div class="stat-card red"><div class="label">إجمالي الصادرات</div><div class="value">' + Utils.fmtNum(totalOut) + '</div></div>' +
-      '<div class="stat-card blue" style="grid-column:span 2;"><div class="label">💰 الإجمالي الكلي</div><div class="value" style="font-size:26px;">' + Utils.fmtNum(totalBalance) + '</div></div>' +
-      (accountsCardsHtml
-        ? '<div style="grid-column:span 2;padding:12px 0 6px;color:var(--gold);font-weight:700;font-size:13px;border-top:1px dashed rgba(212,175,55,.2);margin-top:6px;">📊 تفصيل الحسابات:</div>' + accountsCardsHtml
-        : '');
-  }
+    for (const c of (cache.cash_transactions || [])) {
+      const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+      if (!accountsBalances[accId]) {
+        accountsBalances[accId] = {
+          account: { id: accId, label: accId, icon: '❓', color: 'var(--text-2)', order: 99 },
+          in: 0, out: 0, balance: 0
+        };
+      }
+      if (c.type === 'in') accountsBalances[accId].in += Number(c.amount) || 0;
+      else accountsBalances[accId].out += Number(c.amount) || 0;
+    }
 
-  // ⚠️ عرض الحركات
-  let html = '';
-  if (cash.length === 0) {
-    html = '<div class="empty"><div class="ico">💰</div>لا توجد حركات</div>';
-  } else {
-    for (const c of cash.slice(0, 100)) {
+    let totalIn = 0, totalOut = 0, totalBalance = 0;
+    for (const id in accountsBalances) {
+      accountsBalances[id].balance = accountsBalances[id].in - accountsBalances[id].out;
+      totalIn += accountsBalances[id].in;
+      totalOut += accountsBalances[id].out;
+      totalBalance += accountsBalances[id].balance;
+    }
+
+    // ⚠️ الإحصائيات
+    const statsEl = document.getElementById('cashStats');
+    if (statsEl) {
+      const accountsArr = Object.values(accountsBalances).sort(function (a, b) {
+        return (a.account.order || 99) - (b.account.order || 99);
+      });
+      const accountsWithBalance = accountsArr.filter(function (a) {
+        return a.in > 0 || a.out > 0;
+      });
+
+      let accountsHtml = '';
+      for (const item of accountsWithBalance) {
+        const acc = item.account;
+        accountsHtml +=
+          '<div class="stat-card" style="border-right-color:' + (acc.color || 'var(--gold)') + ';">' +
+            '<div class="label">' + (acc.icon || '💰') + ' ' + Utils.esc(acc.label || acc.id) + '</div>' +
+            '<div class="value" style="color:' + (acc.color || 'var(--gold)') + ';">' + Utils.fmtNum(item.balance) + '</div>' +
+            '<div class="sub-value" style="font-size:10px;">+' + Utils.fmtNum(item.in) + ' / -' + Utils.fmtNum(item.out) + '</div>' +
+          '</div>';
+      }
+
+      statsEl.innerHTML =
+        '<div class="stat-card green"><div class="label">إجمالي الواردات</div><div class="value">' + Utils.fmtNum(totalIn) + '</div></div>' +
+        '<div class="stat-card red"><div class="label">إجمالي الصادرات</div><div class="value">' + Utils.fmtNum(totalOut) + '</div></div>' +
+        '<div class="stat-card blue" style="grid-column:span 2;"><div class="label">💰 الإجمالي الكلي</div><div class="value" style="font-size:26px;">' + Utils.fmtNum(totalBalance) + '</div></div>' +
+        (accountsHtml
+          ? '<div style="grid-column:span 2;padding:12px 0 6px;color:var(--gold);font-weight:700;font-size:13px;border-top:1px dashed rgba(212,175,55,.2);margin-top:6px;">📊 تفصيل الحسابات:</div>' + accountsHtml
+          : '');
+    }
+
+    // ⚠️ عرض الحركات
+    const listEl = document.getElementById('cashList');
+    if (!listEl) return;
+
+    if (allCash.length === 0) {
+      listEl.innerHTML = '<div class="empty"><div class="ico">💰</div>لا توجد حركات مطابقة للفلتر</div>';
+      return;
+    }
+
+    const displayCash = allCash.slice(0, Cash._displayLimit);
+
+    let html = '<div class="card" style="margin-top:8px;">' +
+      '<h3>📜 الحركات (' + allCash.length + ')</h3>' +
+      '<div style="max-height:600px;overflow-y:auto;">';
+
+    for (const c of displayCash) {
       const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
       const acc = getAccount(accId);
-      const icon = acc.icon || '💰';
-      const label = acc.label || accId;
+      const isIn = c.type === 'in';
+      const source = Cash._getSource(c);
+      const sourceLabel = Cash._getSourceLabel(source);
 
-      html += '<div class="list-item"><div class="info">' +
-        '<h4 style="color:' + (c.type === 'in' ? 'var(--green-2)' : 'var(--red-2)') + ';">' +
-          (c.type === 'in' ? '↓ وارد' : '↑ صادر') + ' - ' + Utils.fmtMoney(c.amount) + '</h4>' +
-        '<p>' + Utils.esc(c.description || '-') + '</p>' +
-        '<p style="font-size:11px;color:var(--gold);">' + icon + ' ' + Utils.esc(label) + (c.reference ? ' | ' + Utils.esc(c.reference) : '') + '</p>' +
-        '<p style="font-size:11px;">' + Utils.fmtDate(c.date) + '</p>' +
-      '</div></div>';
+      html += '<div style="padding:10px;border-bottom:1px solid #222;border-right:3px solid ' + (isIn ? 'var(--green-2)' : 'var(--red-2)') + ';border-radius:6px;margin-bottom:6px;background:rgba(0,0,0,.2);">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+          '<strong style="color:' + (isIn ? 'var(--green-2)' : 'var(--red-2)') + ';font-size:14px;">' +
+            (isIn ? '↓ وارد' : '↑ صادر') + ' - ' + Utils.fmtMoney(c.amount) +
+          '</strong>' +
+          '<span style="font-size:11px;color:#888;">' + Utils.fmtDate(c.date) + '</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#ccc;margin-bottom:6px;">' + Utils.esc(c.description || '-') + '</div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:11px;">' +
+          '<span style="color:var(--gold);">' + (acc.icon || '💰') + ' ' + Utils.esc(acc.label || accId) + '</span>' +
+          (sourceLabel ? '<span style="color:var(--blue-2);">' + sourceLabel + '</span>' : '') +
+        '</div>' +
+        (c.reference ? '<div style="font-size:11px;color:#888;margin-top:4px;">🔖 ' + Utils.esc(c.reference) + '</div>' : '') +
+      '</div>';
     }
-  }
-  const el = document.getElementById('cashList');
-  if (el) el.innerHTML = html;
-},
 
-  load() { Cash.render(); }
+    if (allCash.length > Cash._displayLimit) {
+      html += '<button class="btn btn-outline btn-full" onclick="Cash.loadMore()" style="margin:10px 0;">عرض المزيد (' + (allCash.length - Cash._displayLimit) + ' متبقي)</button>';
+    }
+
+    html += '</div></div>';
+
+    // ⚠️ أزرار التصدير
+    html += '<div class="card"><h3>📤 تصدير الحركات</h3>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+        '<button class="btn btn-primary" onclick="Cash.exportExcel()">📊 Excel</button>' +
+        '<button class="btn btn-info" onclick="Cash.exportPDF()">📄 PDF</button>' +
+      '</div>' +
+    '</div>';
+
+    listEl.innerHTML = html;
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🏷️ تحديد مصدر الحركة
+  // ═══════════════════════════════════════════════════════════════════
+  _getSource(c) {
+    if (!c) return 'other';
+    const ref = (c.reference || '').toUpperCase();
+    const desc = (c.description || '').toLowerCase();
+    const cat = c.category || '';
+
+    if (ref.startsWith('RCV') || ref.startsWith('PAY') || cat.includes('سند')) return 'voucher';
+    if (ref.startsWith('S-') || ref.startsWith('P-') || cat.includes('فاتورة') || cat.includes('مبيعات') || cat.includes('مشتريات')) return 'invoice';
+    if (ref.startsWith('SAL') || cat.includes('رواتب') || cat.includes('راتب')) return 'salary';
+    if (ref.startsWith('SR') || ref.startsWith('PR') || cat.includes('مرتجع')) return 'return';
+    return 'other';
+  },
+
+  _getSourceLabel(src) {
+    const map = {
+      invoice: '🛒 فاتورة',
+      voucher: '🧾 سند',
+      salary: '💵 راتب',
+      return: '↩️ مرتجع',
+      other: '📋 أخرى'
+    };
+    return map[src] || '';
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔍 البحث
+  // ═══════════════════════════════════════════════════════════════════
+  search(value) {
+    Cash._filters.search = value || '';
+    Cash._displayLimit = 100;
+    Cash.render();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🎛️ الفلاتر
+  // ═══════════════════════════════════════════════════════════════════
+  setTypeFilter(type) {
+    Cash._filters.type = type;
+    document.querySelectorAll('#cashTypeFilter .filter-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.type === type);
+    });
+    Cash._displayLimit = 100;
+    Cash.render();
+  },
+
+  setSourceFilter(source) {
+    Cash._filters.source = source;
+    document.querySelectorAll('#cashSourceFilter .filter-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.source === source);
+    });
+    Cash._displayLimit = 100;
+    Cash.render();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔄 إعادة تعيين الفلاتر
+  // ═══════════════════════════════════════════════════════════════════
+  resetFilters() {
+    Cash._filters = { search: '', account: 'all', type: 'all', source: 'all', from: '', to: '' };
+    Cash._displayLimit = 100;
+
+    const searchEl = document.getElementById('cashSearch');
+    if (searchEl) searchEl.value = '';
+    const fromEl = document.getElementById('cashFrom');
+    if (fromEl) fromEl.value = '';
+    const toEl = document.getElementById('cashTo');
+    if (toEl) toEl.value = '';
+    const accEl = document.getElementById('cashAccountFilter');
+    if (accEl) accEl.value = 'all';
+
+    document.querySelectorAll('#cashTypeFilter .filter-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.type === 'all');
+    });
+    document.querySelectorAll('#cashSourceFilter .filter-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.source === 'all');
+    });
+
+    Cash.render();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📥 عرض المزيد
+  // ═══════════════════════════════════════════════════════════════════
+  loadMore() {
+    Cash._displayLimit += 100;
+    Cash.render();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📊 تصدير Excel
+  // ═══════════════════════════════════════════════════════════════════
+  exportExcel() {
+    const f = Cash._filters;
+    let cash = (cache.cash_transactions || []).slice();
+
+    if (f.from && f.to) {
+      cash = cash.filter(function (c) {
+        const d = (c.date || '').split('T')[0];
+        return d >= f.from && d <= f.to;
+      });
+    }
+    if (f.account !== 'all') {
+      cash = cash.filter(function (c) {
+        const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+        return accId === f.account;
+      });
+    }
+    if (f.type !== 'all') {
+      cash = cash.filter(function (c) { return c.type === f.type; });
+    }
+    if (f.source !== 'all') {
+      cash = cash.filter(function (c) { return Cash._getSource(c) === f.source; });
+    }
+
+    // ⚠️ بناء item لكل حركة
+    const items = cash.map(function (c) {
+      const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+      const acc = getAccount(accId);
+      return {
+        product_name: (c.type === 'in' ? '↓ وارد' : '↑ صادر') + ' - ' + (c.description || '-'),
+        quantity: 1,
+        price: Number(c.amount) || 0,
+        total: Number(c.amount) || 0,
+        date: c.date,
+        account_label: acc.label
+      };
+    });
+
+    const totalIn = cash.filter(function (c) { return c.type === 'in'; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
+    const totalOut = cash.filter(function (c) { return c.type === 'out'; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
+
+    const doc = {
+      invoice_no: 'CASH-' + Date.now(),
+      date: Utils.nowISO(),
+      party_name: 'تقرير الخزينة',
+      subtotal: totalIn,
+      discount: totalOut,
+      tax: 0,
+      total: totalIn - totalOut,
+      paid: totalIn,
+      remaining: totalOut
+    };
+
+    Export.toExcel(doc, items, 'sales');
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📄 تصدير PDF
+  // ═══════════════════════════════════════════════════════════════════
+  async exportPDF() {
+    const f = Cash._filters;
+    let cash = (cache.cash_transactions || []).slice();
+
+    if (f.from && f.to) {
+      cash = cash.filter(function (c) {
+        const d = (c.date || '').split('T')[0];
+        return d >= f.from && d <= f.to;
+      });
+    }
+    if (f.account !== 'all') {
+      cash = cash.filter(function (c) {
+        const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+        return accId === f.account;
+      });
+    }
+
+    const items = cash.map(function (c) {
+      const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+      const acc = getAccount(accId);
+      return {
+        product_name: (c.type === 'in' ? '↓ وارد' : '↑ صادر') + ' - ' + (c.description || '-') + ' [' + acc.label + ']',
+        quantity: 1,
+        price: Number(c.amount) || 0,
+        total: Number(c.amount) || 0
+      };
+    });
+
+    const totalIn = cash.filter(function (c) { return c.type === 'in'; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
+    const totalOut = cash.filter(function (c) { return c.type === 'out'; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
+
+    const doc = {
+      invoice_no: 'CASH-PDF-' + Date.now(),
+      date: Utils.nowISO(),
+      party_name: 'تقرير الخزينة',
+      subtotal: totalIn,
+      discount: totalOut,
+      tax: 0,
+      total: totalIn - totalOut,
+      paid: totalIn,
+      remaining: totalOut
+    };
+
+    await Export.toPDF(doc, items, 'sales');
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔄 تحميل
+  // ═══════════════════════════════════════════════════════════════════
+  load() {
+    Cash.render();
+  }
 };
 
 /* ═══════════════════════════════════════════════════════════════════
