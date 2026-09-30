@@ -2901,47 +2901,87 @@ body::after {
        💵 صفحة المرتبات
        ═══════════════════════════════════════════════════════════════ -->
   <div id="page-payroll" class="page hidden">
-    <div class="tabs">
-      <div class="tab active" onclick="Payroll.switchTab(event,'generate')">إنشاء</div>
-      <div class="tab" onclick="Payroll.switchTab(event,'list')">السجل</div>
-    </div>
-    <div id="payroll-generate">
-      <div class="card">
-        <h3>💵 إنشاء مرتب شهري</h3>
-        <div class="form-group">
-          <label>الموظف</label>
-          <select id="payEmp"></select>
-        </div>
-        <div style="display:flex;gap:8px;">
-          <div class="form-group" style="flex:1;">
-            <label>الشهر</label>
-            <select id="payMonth"></select>
-          </div>
-          <div class="form-group" style="flex:1;">
-            <label>السنة</label>
-            <input type="number" id="payYear" value="2026">
-          </div>
-        </div>
-        <div class="form-group">
-          <label>مكافآت إضافية</label>
-          <input type="number" id="payBonus" value="0">
-        </div>
-        <div class="form-group">
-          <label>خصومات إضافية</label>
-          <input type="number" id="payDeduction" value="0">
-        </div>
-        <div class="info-box">
-          📊 يتم احتساب الخصومات تلقائياً:
-          <br>• خصم الغياب = (الراتب ÷ 30) × عدد أيام الغياب
-          <br>• خصم التأخير: أول ربع ساعة مجاناً | ثاني ربع = ربع يوم | ثالث ربع = نصف يوم | رابع ربع = يوم كامل
-        </div>
-        <button class="btn btn-primary btn-full" onclick="Payroll.generate()">✓ إنشاء المرتب</button>
+  <div class="tabs">
+    <div class="tab active" onclick="Payroll.switchTab(event,'generate')">➕ إنشاء</div>
+    <div class="tab" onclick="Payroll.switchTab(event,'list')">📋 السجل</div>
+  </div>
+
+  <!-- ⚠️ إنشاء -->
+  <div id="payroll-generate">
+    <div class="card">
+      <h3>💵 إنشاء مرتب شهري</h3>
+      <div class="form-group">
+        <label>الموظف *</label>
+        <select id="payEmp"></select>
       </div>
-    </div>
-    <div id="payroll-list" class="hidden">
-      <div id="payrollList"></div>
+      <div style="display:flex;gap:8px;">
+        <div class="form-group" style="flex:1;">
+          <label>الشهر</label>
+          <select id="payMonth"></select>
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>السنة</label>
+          <input type="number" id="payYear" value="2026">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>مكافآت إضافية</label>
+        <input type="number" id="payBonus" value="0">
+      </div>
+      <div class="form-group">
+        <label>خصومات إضافية</label>
+        <input type="number" id="payDeduction" value="0">
+      </div>
+      <div class="info-box">
+        📊 يتم احتساب الخصومات تلقائياً:
+        <br>• خصم الغياب = (الراتب ÷ 30) × عدد أيام الغياب
+        <br>• خصم التأخير: أول ربع ساعة مجاناً | ثاني ربع = ربع يوم | ثالث ربع = نصف يوم | رابع ربع = يوم كامل
+      </div>
+      <button class="btn btn-primary btn-full" onclick="Payroll.generate()">✓ إنشاء المرتب</button>
     </div>
   </div>
+
+  <!-- ⚠️ السجل -->
+  <div id="payroll-list" class="hidden">
+    <!-- الإحصائيات -->
+    <div id="payrollStats" class="stats-grid"></div>
+
+    <!-- البحث -->
+    <div class="search-bar">
+      <span>🔍</span>
+      <input type="text" id="payrollSearch" placeholder="ابحث بالاسم أو الشهر..." oninput="Payroll.search(this.value)">
+    </div>
+
+    <!-- فلتر الحالة -->
+    <div style="padding:0 12px;margin-bottom:8px;display:flex;gap:6px;overflow-x:auto;" id="payrollStatusFilter">
+      <button class="btn btn-sm btn-primary filter-btn active" data-status="all" onclick="Payroll.setStatusFilter('all')">📋 الكل</button>
+      <button class="btn btn-sm btn-outline filter-btn" data-status="paid" onclick="Payroll.setStatusFilter('paid')">✓ مدفوعة</button>
+      <button class="btn btn-sm btn-outline filter-btn" data-status="pending" onclick="Payroll.setStatusFilter('pending')">⏳ مستحقة</button>
+    </div>
+
+    <!-- فلتر الشهر والسنة -->
+    <div class="search-bar" style="flex-wrap:wrap;">
+      <span>📅</span>
+      <select id="payrollFilterMonth" style="flex:1;background:transparent;border:none;color:var(--text);font-size:15px;outline:none;" onchange="Payroll.setMonthFilter(this.value)">
+        <option value="">كل الشهور</option>
+      </select>
+      <input type="number" id="payrollFilterYear" placeholder="السنة" style="flex:1;background:transparent;border:none;color:var(--text);font-size:15px;outline:none;min-width:80px;" onchange="Payroll.setYearFilter(this.value)">
+      <button class="btn btn-outline btn-sm" onclick="Payroll.resetFilters()">🔄</button>
+    </div>
+
+    <!-- القائمة -->
+    <div id="payrollList"></div>
+
+    <!-- أزرار التصدير -->
+    <div class="card" style="margin-top:12px;">
+      <h3>📤 تصدير المرتبات</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button class="btn btn-primary" onclick="Payroll.exportExcel()">📊 Excel</button>
+        <button class="btn btn-info" onclick="Payroll.exportPDFAll()">📄 PDF</button>
+      </div>
+    </div>
+  </div>
+ </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
        💸 صفحة الإيرادات والمصروفات
