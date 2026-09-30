@@ -5008,89 +5008,276 @@ const HR = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
-   25. Payroll
+   25. Payroll — المرتبات مع إحصائيات وصرف جماعي
    ═══════════════════════════════════════════════════════════════════ */
 const Payroll = {
+  // ⚠️ حالة الفلاتر
+  _filters: {
+    search: '',
+    month: '',
+    year: '',
+    status: 'all' // all | paid | pending
+  },
+  _displayLimit: 30,
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔄 التبويبات
+  // ═══════════════════════════════════════════════════════════════════
   switchTab(e, tab) {
     State.currentPayrollTab = tab;
     document.querySelectorAll('#page-payroll .tab').forEach(function (t) { t.classList.remove('active'); });
     if (e && e.target) e.target.classList.add('active');
+
     const genEl = document.getElementById('payroll-generate');
     const listEl = document.getElementById('payroll-list');
     if (genEl) genEl.classList.toggle('hidden', tab !== 'generate');
     if (listEl) listEl.classList.toggle('hidden', tab !== 'list');
+
     if (tab === 'list') Payroll.loadList();
+    else Payroll.init();
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔧 التهيئة
+  // ═══════════════════════════════════════════════════════════════════
   init() {
     const emps = (cache.employees || []).filter(function (e) { return e.active !== false; });
     const empEl = document.getElementById('payEmp');
     if (empEl) {
-      empEl.innerHTML = emps.map(function (e) {
-        return '<option value="' + e.uid + '">' + Utils.esc(e.name) + '</option>';
-      }).join('');
+      empEl.innerHTML = '<option value="">-- اختر موظف --</option>' +
+        emps.map(function (e) {
+          return '<option value="' + e.uid + '">' + Utils.esc(e.name) + ' - ' + Utils.fmtNum(e.basic_salary) + '</option>';
+        }).join('');
     }
+
     const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
     const monthEl = document.getElementById('payMonth');
     if (monthEl) {
-      monthEl.innerHTML = months.map(function (m, i) { return '<option value="' + (i + 1) + '">' + m + '</option>'; }).join('');
+      monthEl.innerHTML = months.map(function (m, i) {
+        return '<option value="' + (i + 1) + '">' + m + '</option>';
+      }).join('');
       monthEl.value = new Date().getMonth() + 1;
     }
+
     const yearEl = document.getElementById('payYear');
     if (yearEl) yearEl.value = new Date().getFullYear();
+
+    const filterMonthEl = document.getElementById('payrollFilterMonth');
+    if (filterMonthEl && filterMonthEl.options.length <= 1) {
+      filterMonthEl.innerHTML = '<option value="">كل الشهور</option>' +
+        months.map(function (m, i) {
+          return '<option value="' + String(i + 1).padStart(2, '0') + '">' + m + '</option>';
+        }).join('');
+    }
+
     if (State.currentPayrollTab === 'list') Payroll.loadList();
   },
 
-  render() { if (State.currentPage === 'payroll') Payroll.loadList(); },
+  render() {
+    if (State.currentPage === 'payroll') {
+      if (State.currentPayrollTab === 'list') Payroll.loadList();
+    }
+  },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 📊 عرض قائمة المرتبات (محسّن)
+  // ═══════════════════════════════════════════════════════════════════
   loadList() {
-    const payrolls = (cache.payroll || []).slice().sort(function (a, b) {
+    let payrolls = (cache.payroll || []).slice();
+
+    // ⚠️ البحث
+    if (Payroll._filters.search) {
+      const search = Payroll._filters.search.toLowerCase();
+      payrolls = payrolls.filter(function (p) {
+        return (p.employee_name || '').toLowerCase().includes(search) ||
+               (p.month || '').includes(search);
+      });
+    }
+
+    // ⚠️ فلتر الشهر
+    if (Payroll._filters.month) {
+      payrolls = payrolls.filter(function (p) {
+        const month = (p.month || '').split('-')[1];
+        return month === Payroll._filters.month;
+      });
+    }
+
+    // ⚠️ فلتر السنة
+    if (Payroll._filters.year) {
+      payrolls = payrolls.filter(function (p) {
+        const year = (p.month || '').split('-')[0];
+        return year === String(Payroll._filters.year);
+      });
+    }
+
+    // ⚠️ فلتر الحالة
+    if (Payroll._filters.status !== 'all') {
+      payrolls = payrolls.filter(function (p) {
+        return Payroll._filters.status === 'paid' ? p.status === 'paid' : p.status !== 'paid';
+      });
+    }
+
+    // ⚠️ ترتيب
+    payrolls.sort(function (a, b) {
       return (b.month || '').localeCompare(a.month || '');
     });
+
+    // ⚠️ الإحصائيات
+    const stats = {
+      total: payrolls.length,
+      paid: payrolls.filter(function (p) { return p.status === 'paid'; }).length,
+      pending: payrolls.filter(function (p) { return p.status !== 'paid'; }).length,
+      totalAmount: payrolls.reduce(function (s, p) { return s + (Number(p.net_salary) || 0); }, 0),
+      paidAmount: payrolls.filter(function (p) { return p.status === 'paid'; })
+        .reduce(function (s, p) { return s + (Number(p.net_salary) || 0); }, 0),
+      pendingAmount: payrolls.filter(function (p) { return p.status !== 'paid'; })
+        .reduce(function (s, p) { return s + (Number(p.net_salary) || 0); }, 0)
+    };
+
+    // ⚠️ عرض الإحصائيات
+    const statsEl = document.getElementById('payrollStats');
+    if (statsEl) {
+      statsEl.innerHTML =
+        '<div class="stat-card blue"><div class="label">إجمالي المرتبات</div><div class="value">' + stats.total + '</div></div>' +
+        '<div class="stat-card green"><div class="label">مدفوعة</div><div class="value">' + stats.paid + '</div></div>' +
+        '<div class="stat-card orange"><div class="label">مستحقة</div><div class="value">' + stats.pending + '</div></div>' +
+        '<div class="stat-card gold" style="grid-column:span 2;"><div class="label">إجمالي المبلغ</div><div class="value" style="font-size:20px;">' + Utils.fmtNum(stats.totalAmount) + '</div></div>' +
+        '<div class="stat-card green"><div class="label">مدفوع</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(stats.paidAmount) + '</div></div>' +
+        '<div class="stat-card red"><div class="label">مستحق</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(stats.pendingAmount) + '</div></div>';
+    }
+
+    // ⚠️ عرض القائمة
     const el = document.getElementById('payrollList');
     if (!el) return;
+
     if (payrolls.length === 0) {
       el.innerHTML = '<div class="empty"><div class="ico">💵</div>لا توجد مرتبات</div>';
       return;
     }
+
+    const displayPayrolls = payrolls.slice(0, Payroll._displayLimit);
+
     let html = '';
-    for (const p of payrolls) {
-      html += '<div class="list-item"><div class="info">' +
-        '<h4>' + Utils.esc(p.employee_name) + ' - ' + Utils.esc(p.month) + '</h4>' +
-        '<p>صافي: <strong style="color:var(--gold);">' + Utils.fmtMoney(p.net_salary) + '</strong></p>' +
-        '<p style="font-size:11px;">غياب: ' + (p.absence_days || 0) + ' يوم | تأخير: ' + (p.late_minutes || 0) + ' د</p>' +
-        '<p style="font-size:11px;color:' + (p.status === 'paid' ? 'var(--green-2)' : 'var(--orange-2)') + ';">' +
-          (p.status === 'paid' ? 'مدفوع ✓' : 'مستحق') + '</p>' +
-      '</div>' +
-      '<div class="actions">' +
-        (p.status !== 'paid' && can('payroll_pay')
-          ? '<button class="btn btn-success btn-sm" onclick="Payroll.pay(\'' + p.id + '\')">صرف</button>' : '') +
-        '<button class="btn btn-primary btn-sm" onclick="Payroll.show(\'' + p.id + '\')">👁️</button>' +
-      '</div></div>';
+
+    // ⚠️ زر الصرف الجماعي
+    if (stats.pending > 0 && can('payroll_pay')) {
+      html += '<button class="btn btn-success btn-full" style="margin:10px 12px;width:calc(100% - 24px);" onclick="Payroll.payAll()">💵 صرف الكل (' + stats.pending + ' مرتب - ' + Utils.fmtNum(stats.pendingAmount) + ')</button>';
     }
+
+    for (const p of displayPayrolls) {
+      const statusColor = p.status === 'paid' ? 'var(--green-2)' : 'var(--orange-2)';
+      const statusLabel = p.status === 'paid' ? '✓ مدفوع' : '⏳ مستحق';
+      const statusBg = p.status === 'paid' ? 'rgba(76,175,80,.08)' : 'rgba(255,152,0,.08)';
+
+      html += '<div class="list-item" style="background:' + statusBg + ';cursor:pointer;" onclick="Payroll.show(\'' + p.id + '\')">' +
+        '<div class="info">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+            '<h4 style="margin:0;">' + Utils.esc(p.employee_name) + '</h4>' +
+            '<span class="badge ' + (p.status === 'paid' ? 'badge-green' : 'badge-orange') + '">' + statusLabel + '</span>' +
+          '</div>' +
+          '<p style="font-size:12px;">📅 ' + Utils.esc(p.month) + '</p>' +
+          '<p style="font-size:12px;">الصافي: <strong style="color:var(--gold);">' + Utils.fmtMoney(p.net_salary) + '</strong></p>' +
+          '<p style="font-size:11px;color:#888;">غياب: ' + (p.absence_days || 0) + ' يوم | تأخير: ' + (p.late_minutes || 0) + ' د</p>' +
+        '</div>' +
+        '<div class="actions" style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">' +
+          (p.status !== 'paid' && can('payroll_pay')
+            ? '<button class="btn btn-success btn-sm" onclick="event.stopPropagation();Payroll.pay(\'' + p.id + '\')">💵 صرف</button>'
+            : '') +
+          '<button class="btn btn-info btn-sm" onclick="event.stopPropagation();Payroll.printPayroll(\'' + p.id + '\')">🖨️</button>' +
+          (can('payroll_delete') ? '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();Payroll.remove(\'' + p.id + '\')">🗑️</button>' : '') +
+        '</div>' +
+      '</div>';
+    }
+
+    if (payrolls.length > Payroll._displayLimit) {
+      html += '<button class="btn btn-outline btn-full" onclick="Payroll.loadMore()" style="margin:10px 12px;">عرض المزيد (' + (payrolls.length - Payroll._displayLimit) + ' متبقي)</button>';
+    }
+
     el.innerHTML = html;
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔍 الفلاتر
+  // ═══════════════════════════════════════════════════════════════════
+  search(value) {
+    Payroll._filters.search = value || '';
+    Payroll._displayLimit = 30;
+    Payroll.loadList();
+  },
+
+  setMonthFilter(month) {
+    Payroll._filters.month = month || '';
+    Payroll._displayLimit = 30;
+    Payroll.loadList();
+  },
+
+  setYearFilter(year) {
+    Payroll._filters.year = year ? parseInt(year) : '';
+    Payroll._displayLimit = 30;
+    Payroll.loadList();
+  },
+
+  setStatusFilter(status) {
+    Payroll._filters.status = status;
+    document.querySelectorAll('#payrollStatusFilter .filter-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.status === status);
+    });
+    Payroll._displayLimit = 30;
+    Payroll.loadList();
+  },
+
+  resetFilters() {
+    Payroll._filters = { search: '', month: '', year: '', status: 'all' };
+    Payroll._displayLimit = 30;
+    const searchEl = document.getElementById('payrollSearch');
+    if (searchEl) searchEl.value = '';
+    const monthEl = document.getElementById('payrollFilterMonth');
+    if (monthEl) monthEl.value = '';
+    const yearEl = document.getElementById('payrollFilterYear');
+    if (yearEl) yearEl.value = '';
+    document.querySelectorAll('#payrollStatusFilter .filter-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.status === 'all');
+    });
+    Payroll.loadList();
+  },
+
+  loadMore() {
+    Payroll._displayLimit += 30;
+    Payroll.loadList();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // ➕ إنشاء مرتب
+  // ═══════════════════════════════════════════════════════════════════
   async generate() {
     if (!requirePermission('payroll_generate', 'إنشاء مرتب')) return;
+
     const empUid = document.getElementById('payEmp').value;
     const month = parseInt(document.getElementById('payMonth').value);
     const year = parseInt(document.getElementById('payYear').value);
     const bonus = parseFloat(document.getElementById('payBonus').value) || 0;
     const deduction = parseFloat(document.getElementById('payDeduction').value) || 0;
+
+    if (!empUid) return Toast.show('اختر موظف', 'error');
     if (month < 1 || month > 12) return Toast.show('شهر غير صالح', 'error');
     if (year < 2020 || year > 2100) return Toast.show('سنة غير صالحة', 'error');
+
     const emp = (cache.employees || []).find(function (x) { return x.uid === empUid; });
-    if (!emp) return Toast.show('اختر موظف', 'error');
+    if (!emp) return Toast.show('الموظف غير موجود', 'error');
 
     const monthKey = year + '-' + String(month).padStart(2, '0');
-    const existing = (cache.payroll || []).find(function (p) { return p.employee_uid === empUid && p.month === monthKey; });
-    if (existing && !confirm('موجود، إعادة الحساب؟')) return;
+    const existing = (cache.payroll || []).find(function (p) {
+      return p.employee_uid === empUid && p.month === monthKey;
+    });
+    if (existing && !confirm('المرتب موجود بالفعل. إعادة الحساب؟')) return;
+
+    Toast.show('⏳ جاري حساب المرتب...', 'info');
 
     const start = monthKey + '-01';
     const lastDay = new Date(year, month, 0).getDate();
     const end = monthKey + '-' + String(lastDay).padStart(2, '0');
 
+    // ⚠️ حساب الحضور
     const att = (cache.attendance || []).filter(function (a) {
       return a.employee_uid === empUid && a.date >= start && a.date <= end;
     });
@@ -5099,131 +5286,465 @@ const Payroll = {
     const workDays = Utils.calculateWorkDaysInMonth(year, month);
     const absenceDays = Math.max(0, workDays - presentDays - leaveDays);
 
+    // ⚠️ الراتب الأساسي والبدلات
     const basic = Number(emp.basic_salary) || 0;
     const housing = Number(emp.housing_allowance) || 0;
     const transport = Number(emp.transport_allowance) || 0;
     const insurance = Number(emp.insurance_deduction) || 0;
     const tax = Number(emp.tax_deduction) || 0;
+
+    // ⚠️ خصم الغياب
     const dailyRate = basic / WORK_DAYS_PER_MONTH;
     const absenceDeduction = dailyRate * absenceDays;
+
+    // ⚠️ خصم التأخير
     const lateDeduction = att.reduce(function (s, a) { return s + (Number(a.late_deduction) || 0); }, 0);
     const lateMinutes = att.reduce(function (s, a) { return s + (Number(a.minutes_late) || 0); }, 0);
+
+    // ⚠️ السلف غير المسددة
     const advances = (cache.employee_transactions || [])
       .filter(function (t) { return t.employee_uid === empUid && t.type === 'advance' && !t.paid; })
       .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+
+    // ⚠️ المكافآت والخصومات من HR
     const hrBonuses = (cache.employee_transactions || [])
       .filter(function (t) {
-        return t.employee_uid === empUid && t.type === 'bonus' && !t.paid && t.date && t.date >= start && t.date <= end;
-      })
-      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
-    const hrDeductions = (cache.employee_transactions || [])
-      .filter(function (t) {
-        return t.employee_uid === empUid && t.type === 'deduction' && !t.paid && t.date && t.date >= start && t.date <= end;
+        return t.employee_uid === empUid && t.type === 'bonus' && !t.paid &&
+               t.date && t.date >= start && t.date <= end;
       })
       .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
 
+    const hrDeductions = (cache.employee_transactions || [])
+      .filter(function (t) {
+        return t.employee_uid === empUid && t.type === 'deduction' && !t.paid &&
+               t.date && t.date >= start && t.date <= end;
+      })
+      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+
+    // ⚠️ الحساب النهائي
     const gross = basic + housing + transport + bonus + hrBonuses;
     const totalDed = insurance + tax + absenceDeduction + lateDeduction + deduction + advances + hrDeductions;
     const net = gross - totalDed;
+
     const id = existing ? existing.id : Utils.genId('PAY');
 
     const data = {
-      id: id, employee_uid: empUid, employee_name: emp.name,
-      month: monthKey, basic_salary: basic,
-      housing_allowance: housing, transport_allowance: transport,
-      bonuses: bonus + hrBonuses, deductions: deduction + hrDeductions,
-      absence_days: absenceDays, absence_deduction: absenceDeduction,
-      late_minutes: lateMinutes, late_deduction: lateDeduction,
-      insurance_deduction: insurance, tax_deduction: tax,
-      advances_deduction: advances, net_salary: net,
-      work_days: workDays, attendance_days: presentDays, leave_days: leaveDays,
+      id: id,
+      employee_uid: empUid,
+      employee_name: emp.name,
+      month: monthKey,
+      basic_salary: basic,
+      housing_allowance: housing,
+      transport_allowance: transport,
+      bonuses: bonus + hrBonuses,
+      deductions: deduction + hrDeductions,
+      absence_days: absenceDays,
+      absence_deduction: absenceDeduction,
+      late_minutes: lateMinutes,
+      late_deduction: lateDeduction,
+      insurance_deduction: insurance,
+      tax_deduction: tax,
+      advances_deduction: advances,
+      net_salary: net,
+      work_days: workDays,
+      attendance_days: presentDays,
+      leave_days: leaveDays,
       status: existing ? existing.status : 'pending',
-      accrual_date: end, created_at: Utils.nowISO(),
+      accrual_date: end,
+      created_at: Utils.nowISO(),
       created_by: State.currentEmployee.name
     };
+
     await Sync.save('payroll', id, data);
-    // ⚠️ حدّث cache فوراً
+
+    // ⚠️ تحديث cache
     const idx = (cache.payroll || []).findIndex(function (p) { return p.id === id; });
     if (idx >= 0) cache.payroll[idx] = data;
     else cache.payroll.push(data);
 
     await Activity.log('payroll_generate', emp.name + ' - ' + monthKey + ' - صافي ' + Utils.fmtMoney(net));
+
     Toast.show('✅ تم الإنشاء — صافي: ' + Utils.fmtMoney(net));
+
     document.getElementById('payBonus').value = 0;
     document.getElementById('payDeduction').value = 0;
+
     if (State.currentPayrollTab === 'list') Payroll.loadList();
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 💵 صرف مرتب واحد
+  // ═══════════════════════════════════════════════════════════════════
   async pay(id) {
     if (!requirePermission('payroll_pay', 'صرف مرتب')) return;
+
     const p = (cache.payroll || []).find(function (x) { return x.id === id; });
     if (!p) return;
+    if (p.status === 'paid') return Toast.show('المرتب مدفوع بالفعل', 'info');
+
     const html =
-      '<div style="padding:12px;background:rgba(212,175,55,.08);border-radius:8px;margin-bottom:12px;">' +
+      '<div style="padding:12px;background:rgba(212,175,55,.08);border-radius:10px;margin-bottom:12px;">' +
         '<div style="display:flex;justify-content:space-between;padding:4px 0;"><span>الموظف:</span><strong>' + Utils.esc(p.employee_name) + '</strong></div>' +
         '<div style="display:flex;justify-content:space-between;padding:4px 0;"><span>الشهر:</span><strong>' + Utils.esc(p.month) + '</strong></div>' +
-        '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:18px;color:var(--gold);font-weight:700;"><span>الصافي:</span><strong>' + Utils.fmtMoney(p.net_salary) + '</strong></div>' +
+        '<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:20px;color:var(--gold);font-weight:800;border-top:1px dashed rgba(212,175,55,.3);margin-top:8px;">' +
+          '<span>الصافي:</span>' +
+          '<strong>' + Utils.fmtMoney(p.net_salary) + '</strong>' +
+        '</div>' +
       '</div>' +
       '<div class="form-group"><label>طريقة الصرف</label>' +
-        '<select id="sal_method"><option>نقدي</option><option>بنكي</option><option>محفظة</option></select></div>' +
-      '<div class="info-box">💡 سيتم إنشاء سند صرف تلقائياً وخصم المبلغ من الخزينة.</div>';
+        '<select id="sal_method">' +
+          '<option value="نقدي">💵 نقدي</option>' +
+          '<option value="بنكي">🏦 بنكي</option>' +
+          '<option value="محفظة">📲 محفظة</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="info-box" style="font-size:12px;">' +
+        '💡 سيتم إنشاء سند صرف تلقائياً وخصم المبلغ من الخزينة.' +
+      '</div>';
+
     Modal.open('💵 صرف راتب ' + p.month, html, async function () {
       const method = document.getElementById('sal_method').value;
       const now = Utils.nowISO();
+
       p.status = 'paid';
       p.paid_date = now;
       p.payment_method = method;
       await Sync.save('payroll', id, p);
 
+      // ⚠️ إنشاء سند الصرف
       const voucherId = Utils.genId('PAY');
       const voucherNo = 'PAY-' + Date.now();
+      const accountId = methodToAccountId(method);
+      const account = getAccount(accountId);
+
       await Sync.save('vouchers', voucherId, {
-        id: voucherId, voucher_no: voucherNo, type: 'payment',
-        amount: p.net_salary, employee_uid: p.employee_uid, employee_name: p.employee_name,
-        issued_by_name: State.currentEmployee.name, date: now, payment_method: method,
+        id: voucherId,
+        voucher_no: voucherNo,
+        type: 'payment',
+        amount: p.net_salary,
+        employee_uid: p.employee_uid,
+        employee_name: p.employee_name,
+        issued_by_name: State.currentEmployee.name,
+        date: now,
+        payment_method: method,
+        account_id: accountId,
+        account_label: account.label,
         description: 'راتب ' + p.month + ' - ' + p.employee_name,
-        reference: 'SAL-' + p.month, auto_generated: true, created_at: now
+        reference: 'SAL-' + p.month,
+        auto_generated: true,
+        created_at: now
       });
 
+      // ⚠️ حركة الخزينة
       const cashId = Utils.genId('CSH');
       await Sync.save('cash_transactions', cashId, {
-        id: cashId, type: 'out', amount: p.net_salary,
+        id: cashId,
+        type: 'out',
+        amount: p.net_salary,
+        reference: voucherNo,
         description: 'راتب ' + p.month + ' - ' + p.employee_name,
-        category: 'رواتب', date: now, employee_name: State.currentEmployee.name,
-        payment_method: method, voucher_ref: voucherNo
+        category: 'رواتب',
+        date: now,
+        employee_name: State.currentEmployee.name,
+        payment_method: method,
+        account_id: accountId,
+        account_label: account.label,
+        voucher_id: voucherId
       });
 
+      // ⚠️ تحديث السلف والمكافآت والخصومات إلى "مسددة"
+      const txs = (cache.employee_transactions || []).filter(function (t) {
+        if (t.employee_uid !== p.employee_uid || t.paid) return false;
+        const monthStart = p.month + '-01';
+        const monthEnd = p.month + '-31';
+        return (t.type === 'advance') ||
+               (t.date && t.date >= monthStart && t.date <= monthEnd);
+      });
+
+      for (const t of txs) {
+        t.paid = true;
+        t.paid_date = now;
+        t.paid_with = voucherNo;
+        await Sync.save('employee_transactions', t.id, t);
+      }
+
       Modal.close();
-      Toast.show('✅ تم الصرف');
+      Toast.show('✅ تم الصرف: ' + Utils.fmtMoney(p.net_salary));
       await Activity.log('salary_paid', voucherNo + ' - ' + Utils.fmtMoney(p.net_salary));
+
+      if (State.currentPayrollTab === 'list') Payroll.loadList();
     });
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 💵 صرف جماعي
+  // ═══════════════════════════════════════════════════════════════════
+  async payAll() {
+    if (!requirePermission('payroll_pay', 'صرف مرتب')) return;
+
+    const pending = (cache.payroll || []).filter(function (p) { return p.status !== 'paid'; });
+
+    if (pending.length === 0) {
+      Toast.show('لا توجد مرتبات مستحقة', 'info');
+      return;
+    }
+
+    const total = pending.reduce(function (s, p) { return s + (Number(p.net_salary) || 0); }, 0);
+
+    if (!confirm('صرف ' + pending.length + ' مرتب بإجمالي ' + Utils.fmtMoney(total) + '؟\n\nهل أنت متأكد؟')) return;
+
+    const html =
+      '<div class="warning-box">' +
+        '⚠️ سيتم صرف ' + pending.length + ' مرتب<br>' +
+        'بإجمالي: <strong>' + Utils.fmtMoney(total) + '</strong>' +
+      '</div>' +
+      '<div class="form-group"><label>طريقة الصرف الموحدة</label>' +
+        '<select id="sal_all_method">' +
+          '<option value="نقدي">💵 نقدي</option>' +
+          '<option value="بنكي">🏦 بنكي</option>' +
+          '<option value="محفظة">📲 محفظة</option>' +
+        '</select>' +
+      '</div>';
+
+    Modal.open('💵 صرف جماعي', html, async function () {
+      const method = document.getElementById('sal_all_method').value;
+      const now = Utils.nowISO();
+      const accountId = methodToAccountId(method);
+      const account = getAccount(accountId);
+
+      Toast.show('⏳ جاري الصرف...', 'info');
+
+      let successCount = 0;
+      for (const p of pending) {
+        try {
+          p.status = 'paid';
+          p.paid_date = now;
+          p.payment_method = method;
+          await Sync.save('payroll', p.id, p);
+
+          const voucherId = Utils.genId('PAY');
+          const voucherNo = 'PAY-' + Date.now() + '-' + successCount;
+          await Sync.save('vouchers', voucherId, {
+            id: voucherId,
+            voucher_no: voucherNo,
+            type: 'payment',
+            amount: p.net_salary,
+            employee_uid: p.employee_uid,
+            employee_name: p.employee_name,
+            issued_by_name: State.currentEmployee.name,
+            date: now,
+            payment_method: method,
+            account_id: accountId,
+            account_label: account.label,
+            description: 'راتب ' + p.month + ' - ' + p.employee_name,
+            reference: 'SAL-' + p.month,
+            auto_generated: true,
+            created_at: now
+          });
+
+          const cashId = Utils.genId('CSH');
+          await Sync.save('cash_transactions', cashId, {
+            id: cashId,
+            type: 'out',
+            amount: p.net_salary,
+            reference: voucherNo,
+            description: 'راتب ' + p.month + ' - ' + p.employee_name,
+            category: 'رواتب',
+            date: now,
+            employee_name: State.currentEmployee.name,
+            payment_method: method,
+            account_id: accountId,
+            account_label: account.label,
+            voucher_id: voucherId
+          });
+
+          successCount++;
+        } catch (e) {
+          console.error('Failed to pay:', p.id, e);
+        }
+      }
+
+      Modal.close();
+      Toast.show('✅ تم صرف ' + successCount + ' من ' + pending.length);
+      await Activity.log('salary_paid_bulk', successCount + ' مرتبات - ' + Utils.fmtMoney(total));
+
+      Payroll.loadList();
+    });
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📄 عرض تفاصيل المرتب
+  // ═══════════════════════════════════════════════════════════════════
   async show(id) {
     const p = (cache.payroll || []).find(function (x) { return x.id === id; });
     if (!p) return;
-    const html =
-      '<div style="display:flex;gap:8px;margin-bottom:12px;">' +
-        '<button class="btn btn-primary btn-full" onclick="Export.openDialog(\'payroll\', JSON.parse(\'' + JSON.stringify(p).replace(/'/g, "\\'") + '\'), [])">📤 تصدير</button>' +
+
+    const statusColor = p.status === 'paid' ? 'var(--green-2)' : 'var(--orange-2)';
+    const statusLabel = p.status === 'paid' ? '✓ مدفوع' : '⏳ مستحق';
+
+    let html = '';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📄 مفردات المرتب
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="receipt" id="printablePayroll">' +
+      '<div class="header">' +
+        '<h2>🏪 شركة البسملة</h2>' +
+        '<p>لتجارة المشغولات الصينية</p>' +
+        '<p>💵 مفردات المرتب - ' + Utils.esc(p.month) + '</p>' +
       '</div>' +
-      '<div class="receipt"><div class="header"><h2>🏪 شركة البسملة</h2><p>مفردات المرتب - ' + Utils.esc(p.month) + '</p></div>' +
-      '<div class="line"><span>الموظف:</span><span>' + Utils.esc(p.employee_name) + '</span></div><hr>' +
+      '<div class="line"><span>الموظف:</span><span>' + Utils.esc(p.employee_name) + '</span></div>' +
+      '<div class="line"><span>الشهر:</span><span>' + Utils.esc(p.month) + '</span></div>' +
+      '<div class="line"><span>الحالة:</span><span style="color:' + statusColor + ';">' + statusLabel + '</span></div>' +
+      '<hr style="margin:10px 0;border:none;border-top:1px dashed #000;">' +
       '<div class="line"><span>أيام العمل:</span><span>' + (p.work_days || 0) + '</span></div>' +
       '<div class="line"><span>أيام الحضور:</span><span>' + (p.attendance_days || 0) + '</span></div>' +
       '<div class="line"><span>أيام الغياب:</span><span>' + (p.absence_days || 0) + '</span></div>' +
-      '<div class="line"><span>دقائق التأخير:</span><span>' + (p.late_minutes || 0) + '</span></div><hr>' +
+      '<div class="line"><span>دقائق التأخير:</span><span>' + (p.late_minutes || 0) + '</span></div>' +
+      '<hr style="margin:10px 0;border:none;border-top:1px dashed #000;">' +
       '<div class="line"><span>الأساسي:</span><span>' + Utils.fmtMoney(p.basic_salary) + '</span></div>' +
       '<div class="line"><span>بدل سكن:</span><span>' + Utils.fmtMoney(p.housing_allowance) + '</span></div>' +
       '<div class="line"><span>بدل مواصلات:</span><span>' + Utils.fmtMoney(p.transport_allowance) + '</span></div>' +
-      '<div class="line"><span>مكافآت:</span><span>+' + Utils.fmtMoney(p.bonuses) + '</span></div><hr>' +
-      '<div class="line"><span>خصم غياب:</span><span>-' + Utils.fmtMoney(p.absence_deduction) + '</span></div>' +
-      '<div class="line"><span>خصم تأخير:</span><span>-' + Utils.fmtMoney(p.late_deduction) + '</span></div>' +
-      '<div class="line"><span>تأمينات:</span><span>-' + Utils.fmtMoney(p.insurance_deduction) + '</span></div>' +
-      '<div class="line"><span>ضريبة:</span><span>-' + Utils.fmtMoney(p.tax_deduction) + '</span></div>' +
-      '<div class="line"><span>خصومات:</span><span>-' + Utils.fmtMoney(p.deductions) + '</span></div>' +
-      '<div class="line"><span>سلف:</span><span>-' + Utils.fmtMoney(p.advances_deduction) + '</span></div>' +
-      '<div class="line total"><span>الصافي:</span><span>' + Utils.fmtMoney(p.net_salary) + '</span></div></div>';
+      '<div class="line"><span>مكافآت:</span><span style="color:#0a0;">+' + Utils.fmtMoney(p.bonuses) + '</span></div>' +
+      '<hr style="margin:10px 0;border:none;border-top:1px dashed #000;">' +
+      '<div class="line"><span>خصم غياب:</span><span style="color:#c00;">-' + Utils.fmtMoney(p.absence_deduction) + '</span></div>' +
+      '<div class="line"><span>خصم تأخير:</span><span style="color:#c00;">-' + Utils.fmtMoney(p.late_deduction) + '</span></div>' +
+      '<div class="line"><span>تأمينات:</span><span style="color:#c00;">-' + Utils.fmtMoney(p.insurance_deduction) + '</span></div>' +
+      '<div class="line"><span>ضريبة:</span><span style="color:#c00;">-' + Utils.fmtMoney(p.tax_deduction) + '</span></div>' +
+      '<div class="line"><span>خصومات:</span><span style="color:#c00;">-' + Utils.fmtMoney(p.deductions) + '</span></div>' +
+      '<div class="line"><span>سلف:</span><span style="color:#c00;">-' + Utils.fmtMoney(p.advances_deduction) + '</span></div>' +
+      '<div class="line total"><span>الصافي:</span><span>' + Utils.fmtMoney(p.net_salary) + '</span></div>' +
+      '<div style="text-align:center;margin-top:15px;font-size:11px;border-top:1px dashed #000;padding-top:10px;">' +
+        '© البسملة ' + new Date().getFullYear() +
+      '</div>' +
+    '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📤 أزرار العمليات
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card" style="margin-top:12px;">' +
+      '<h3>⚙️ العمليات</h3>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+        '<button class="btn btn-primary" onclick="Payroll.exportPDF(\'' + id + '\')">📄 PDF</button>' +
+        '<button class="btn btn-info" onclick="Payroll.printPayroll(\'' + id + '\')">🖨️ طباعة</button>' +
+        '<button class="btn btn-success" onclick="Payroll.share(\'' + id + '\')">📱 مشاركة</button>' +
+        (p.status !== 'paid' && can('payroll_pay')
+          ? '<button class="btn btn-warning" onclick="Modal.close();Payroll.pay(\'' + id + '\')">💵 صرف</button>'
+          : '') +
+      '</div>' +
+    '</div>';
+
     Modal.open('📄 مفردات المرتب', html, null, 'إغلاق');
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🖨️ طباعة
+  // ═══════════════════════════════════════════════════════════════════
+  printPayroll(id) {
+    const p = (cache.payroll || []).find(function (x) { return x.id === id; });
+    if (!p) return;
+    Modal.close();
+    Printer.openDialog(p, [], 'payroll');
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📤 تصدير PDF
+  // ═══════════════════════════════════════════════════════════════════
+  async exportPDF(id) {
+    const p = (cache.payroll || []).find(function (x) { return x.id === id; });
+    if (!p) return;
+    await Export.toPDF(p, [], 'payroll');
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📱 مشاركة
+  // ═══════════════════════════════════════════════════════════════════
+  async share(id) {
+    const p = (cache.payroll || []).find(function (x) { return x.id === id; });
+    if (!p) return;
+    await Export.share(p, [], 'payroll');
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🗑️ حذف
+  // ═══════════════════════════════════════════════════════════════════
+  async remove(id) {
+    if (!requirePermission('payroll_delete', 'حذف مرتب')) return;
+    if (!confirm('حذف هذا المرتب؟')) return;
+
+    const p = (cache.payroll || []).find(function (x) { return x.id === id; });
+    if (!p) return;
+
+    if (p.status === 'paid') {
+      if (!confirm('⚠️ المرتب مدفوع بالفعل! هل تريد الحذف على أي حال؟')) return;
+    }
+
+    await Sync.softDelete('payroll', id);
+    Toast.show('تم الحذف');
+    await Activity.log('payroll_delete', p.employee_name + ' - ' + p.month);
+
+    Payroll.loadList();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📊 تصدير Excel (كل المرتبات)
+  // ═══════════════════════════════════════════════════════════════════
+  exportExcel() {
+    const payrolls = (cache.payroll || []).slice();
+
+    const items = payrolls.map(function (p) {
+      return {
+        product_name: (p.employee_name || '-') + ' - ' + (p.month || '-'),
+        quantity: 1,
+        price: Number(p.net_salary) || 0,
+        total: Number(p.net_salary) || 0
+      };
+    });
+
+    const total = payrolls.reduce(function (s, p) { return s + (Number(p.net_salary) || 0); }, 0);
+
+    const doc = {
+      invoice_no: 'PAYROLL-REP-' + Date.now(),
+      date: Utils.nowISO(),
+      party_name: 'تقرير المرتبات',
+      subtotal: total,
+      discount: 0,
+      tax: 0,
+      total: total,
+      paid: 0,
+      remaining: total
+    };
+
+    Export.toExcel(doc, items, 'payroll');
+  },
+
+  async exportPDFAll() {
+    const payrolls = (cache.payroll || []).slice();
+
+    const items = payrolls.map(function (p) {
+      return {
+        product_name: (p.employee_name || '-') + ' - ' + (p.month || '-') + ' - ' + (p.status === 'paid' ? 'مدفوع' : 'مستحق'),
+        quantity: 1,
+        price: Number(p.net_salary) || 0,
+        total: Number(p.net_salary) || 0
+      };
+    });
+
+    const total = payrolls.reduce(function (s, p) { return s + (Number(p.net_salary) || 0); }, 0);
+
+    const doc = {
+      invoice_no: 'PAYROLL-PDF-' + Date.now(),
+      date: Utils.nowISO(),
+      party_name: 'تقرير المرتبات',
+      subtotal: total,
+      discount: 0,
+      tax: 0,
+      total: total,
+      paid: 0,
+      remaining: total
+    };
+
+    await Export.toPDF(doc, items, 'payroll');
   }
 };
 
