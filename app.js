@@ -4286,6 +4286,8 @@ const Dashboard = {
    22. Attendance
    ═══════════════════════════════════════════════════════════════════ */
 const Attendance = {
+  _refreshTimer: null,
+
   switchTab(e, tab) {
     document.querySelectorAll('#page-attendance .tab').forEach(function (t) { t.classList.remove('active'); });
     if (e && e.target) e.target.classList.add('active');
@@ -4329,6 +4331,27 @@ const Attendance = {
   updateLocationStatus(res) {
     const el = document.getElementById('locationStatus');
     if (!el) return;
+
+    // ⚠️ [إصلاح] لو res هو coords من watchPosition (مفيهوش reason)
+    if (res && typeof res.lat === 'number' && typeof res.lng === 'number' && !res.reason) {
+      // ده تحديث موقع فقط — نجدد التحقق الكامل بعد لحظة
+      if (el.innerHTML.indexOf('location-status') === -1) {
+        el.innerHTML = '<div class="location-status checking">' +
+          '<div class="status-icon">📡</div>' +
+          '<div class="status-text">جاري تحديث موقعك...</div>' +
+          '<div class="coords">' + res.lat.toFixed(5) + ', ' + res.lng.toFixed(5) + '</div>' +
+        '</div>';
+      }
+      clearTimeout(Attendance._refreshTimer);
+      Attendance._refreshTimer = setTimeout(function () {
+        Attendance.checkLocationNow();
+      }, 1000);
+      return;
+    }
+
+    // ⚠️ حالة عادية — كائن كامل من checkGeofence
+    if (!res) return;
+
     if (res.reason === 'no_geofence') {
       el.innerHTML = '<div class="location-status in-range">' +
         '<div class="status-icon">✅</div>' +
@@ -4337,6 +4360,7 @@ const Attendance = {
       '</div>';
       return;
     }
+
     if (res.reason === 'error') {
       el.innerHTML = '<div class="location-status out-range">' +
         '<div class="status-icon">⚠️</div>' +
@@ -4345,14 +4369,18 @@ const Attendance = {
       '</div>';
       return;
     }
-    const cls = res.inRange ? 'in-range' : 'out-range';
-    const icon = res.inRange ? '✅' : '🚫';
-    const text = res.inRange ? 'أنت داخل النطاق' : 'أنت خارج النطاق';
+
+    const inRange = res.inRange === true;
+    const cls = inRange ? 'in-range' : 'out-range';
+    const icon = inRange ? '✅' : '🚫';
+    const text = inRange ? 'أنت داخل النطاق' : 'أنت خارج النطاق';
     const fenceName = res.fence ? res.fence.name : '';
+    const distance = Number(res.distance) || 0;
+
     el.innerHTML = '<div class="location-status ' + cls + '">' +
       '<div class="status-icon">' + icon + '</div>' +
       '<div class="status-text">' + text + '</div>' +
-      '<div class="distance">' + (fenceName ? Utils.esc(fenceName) + ' — ' : '') + 'المسافة: ' + res.distance + ' متر</div>' +
+      '<div class="distance">' + (fenceName ? Utils.esc(fenceName) + ' — ' : '') + 'المسافة: ' + distance + ' متر</div>' +
       (res.pos ? '<div class="coords">' + res.pos.lat.toFixed(5) + ', ' + res.pos.lng.toFixed(5) + '</div>' : '') +
     '</div>';
   },
