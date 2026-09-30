@@ -2801,26 +2801,90 @@ body::after {
        📊 صفحة التقارير
        ═══════════════════════════════════════════════════════════════ -->
   <div id="page-reports" class="page hidden">
-    <div class="tabs">
-      <div class="tab active" onclick="Reports.switchTab(event,'profit')">الأرباح</div>
-      <div class="tab" onclick="Reports.switchTab(event,'top')">الأكثر مبيعاً</div>
-      <div class="tab" onclick="Reports.switchTab(event,'low')">نواقص المخزون</div>
+  <div class="tabs">
+    <div class="tab active" onclick="Reports.switchTab(event,'profit')">💰 الأرباح</div>
+    <div class="tab" onclick="Reports.switchTab(event,'sales')">🛒 المبيعات</div>
+    <div class="tab" onclick="Reports.switchTab(event,'purchase')">📦 المشتريات</div>
+    <div class="tab" onclick="Reports.switchTab(event,'top')">🏆 الأكثر مبيعاً</div>
+    <div class="tab" onclick="Reports.switchTab(event,'low')">⚠️ نواقص</div>
+  </div>
+
+  <!-- ⚠️ تاب الأرباح -->
+  <div id="rep-profit">
+    <div class="search-bar">
+      <span>📅</span>
+      <input type="date" id="profFrom">
+      <input type="date" id="profTo">
+      <button class="btn btn-primary btn-sm" onclick="Reports.loadProfit()">عرض</button>
     </div>
-    <div id="rep-profit">
-      <div class="search-bar">
+    <div id="profResult"></div>
+  </div>
+
+  <!-- ⚠️ تاب المبيعات (جديد) -->
+  <div id="rep-sales" class="hidden">
+    <div class="card">
+      <h3>🛒 تقرير المبيعات</h3>
+      <div class="search-bar" style="margin:0;">
         <span>📅</span>
-        <input type="date" id="profFrom">
-        <input type="date" id="profTo">
-        <button class="btn btn-primary btn-sm" onclick="Reports.loadProfit()">عرض</button>
+        <input type="date" id="salesRepFrom">
+        <input type="date" id="salesRepTo">
       </div>
-      <div id="profResult"></div>
+      <div class="form-group" style="margin-top:8px;">
+        <label>العميل</label>
+        <select id="salesRepCustomer"></select>
+      </div>
+      <div class="form-group">
+        <label>طريقة الدفع</label>
+        <select id="salesRepMethod">
+          <option value="all">💳 كل الطرق</option>
+          <option value="cash">💵 نقدي</option>
+          <option value="bank">🏦 بنكي</option>
+          <option value="instapay">📱 إنستا باي</option>
+          <option value="vodafone">📲 فودافون كاش</option>
+        </select>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="Reports.loadSalesReport()">🔍 عرض التقرير</button>
     </div>
-    <div id="rep-top" class="hidden">
-      <div id="topProductsList"></div>
+    <div id="salesRepResult"></div>
+  </div>
+
+  <!-- ⚠️ تاب المشتريات (جديد) -->
+  <div id="rep-purchase" class="hidden">
+    <div class="card">
+      <h3>📦 تقرير المشتريات</h3>
+      <div class="search-bar" style="margin:0;">
+        <span>📅</span>
+        <input type="date" id="purchRepFrom">
+        <input type="date" id="purchRepTo">
+      </div>
+      <div class="form-group" style="margin-top:8px;">
+        <label>المورد</label>
+        <select id="purchRepSupplier"></select>
+      </div>
+      <div class="form-group">
+        <label>طريقة الدفع</label>
+        <select id="purchRepMethod">
+          <option value="all">💳 كل الطرق</option>
+          <option value="cash">💵 نقدي</option>
+          <option value="bank">🏦 بنكي</option>
+          <option value="instapay">📱 إنستا باي</option>
+          <option value="vodafone">📲 فودافون كاش</option>
+        </select>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="Reports.loadPurchaseReport()">🔍 عرض التقرير</button>
     </div>
-    <div id="rep-low" class="hidden">
-      <div id="lowStockList"></div>
-    </div>
+    <div id="purchRepResult"></div>
+  </div>
+
+  <!-- ⚠️ تاب الأكثر مبيعاً -->
+  <div id="rep-top" class="hidden">
+    <div id="topProductsList"></div>
+  </div>
+
+  <!-- ⚠️ تاب نواقص المخزون -->
+  <div id="rep-low" class="hidden">
+    <div id="lowStockList"></div>
+  </div>
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
