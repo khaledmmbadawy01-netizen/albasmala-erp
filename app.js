@@ -4311,64 +4311,391 @@ const Attendance = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
-   23. Employees
+   23. Employees — الموظفون مع فلاتر وإحصائيات
    ═══════════════════════════════════════════════════════════════════ */
 const Employees = {
+  // ⚠️ حالة الفلاتر
+  _filters: {
+    search: '',
+    role: 'all',
+    status: 'active', // active | inactive | all
+    sort: 'newest' // newest | name | salary_high | salary_low
+  },
+  _displayLimit: 50,
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔄 إعادة الرسم
+  // ═══════════════════════════════════════════════════════════════════
   render() {
     const searchEl = document.getElementById('empSearch');
-    const search = searchEl ? searchEl.value.trim() : '';
-    let emps = (cache.employees || []).filter(function (e) { return e.active !== false; });
-    if (search) emps = emps.filter(function (e) {
-      return (e.name || '').includes(search) || (e.code || '').includes(search);
-    });
+    if (searchEl) Employees._filters.search = searchEl.value.trim();
+
+    let emps = (cache.employees || []).slice();
+
+    // ⚠️ فلتر الحالة
+    const statusFilter = Employees._filters.status;
+    if (statusFilter === 'active') {
+      emps = emps.filter(function (e) { return e.active !== false; });
+    } else if (statusFilter === 'inactive') {
+      emps = emps.filter(function (e) { return e.active === false; });
+    }
+
+    // ⚠️ فلتر الدور
+    if (Employees._filters.role !== 'all') {
+      emps = emps.filter(function (e) { return e.role === Employees._filters.role; });
+    }
+
+    // ⚠️ البحث
+    if (Employees._filters.search) {
+      const search = Employees._filters.search.toLowerCase();
+      emps = emps.filter(function (e) {
+        return (e.name || '').toLowerCase().includes(search) ||
+               (e.code || '').toLowerCase().includes(search) ||
+               (e.phone || '').toLowerCase().includes(search);
+      });
+    }
+
+    // ⚠️ الترتيب
+    const sort = Employees._filters.sort;
+    if (sort === 'newest') {
+      emps.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+    } else if (sort === 'name') {
+      emps.sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    } else if (sort === 'salary_high') {
+      emps.sort(function (a, b) { return (Number(b.basic_salary) || 0) - (Number(a.basic_salary) || 0); });
+    } else if (sort === 'salary_low') {
+      emps.sort(function (a, b) { return (Number(a.basic_salary) || 0) - (Number(b.basic_salary) || 0); });
+    }
+
+    // ⚠️ الإحصائيات
+    const allEmps = (cache.employees || []).filter(function (e) { return e.active !== false; });
+    const today = Utils.todayStr();
+    const att = cache.attendance || [];
+    const presentToday = att.filter(function (a) { return a.date === today && a.check_in; }).length;
+
+    const stats = {
+      total: allEmps.length,
+      present: presentToday,
+      totalSalary: allEmps.reduce(function (s, e) { return s + (Number(e.basic_salary) || 0); }, 0),
+      totalAllowances: allEmps.reduce(function (s, e) {
+        return s + (Number(e.housing_allowance) || 0) + (Number(e.transport_allowance) || 0);
+      }, 0)
+    };
+
+    const statsEl = document.getElementById('empStats');
+    if (statsEl) {
+      statsEl.innerHTML =
+        '<div class="stat-card blue"><div class="label">عدد الموظفين</div><div class="value">' + stats.total + '</div></div>' +
+        '<div class="stat-card green"><div class="label">حضور اليوم</div><div class="value">' + stats.present + ' / ' + stats.total + '</div></div>' +
+        '<div class="stat-card gold"><div class="label">إجمالي الرواتب</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(stats.totalSalary) + '</div></div>' +
+        '<div class="stat-card purple"><div class="label">إجمالي البدلات</div><div class="value" style="font-size:16px;">' + Utils.fmtNum(stats.totalAllowances) + '</div></div>';
+    }
+
+    // ⚠️ زر الإضافة
     const addBtn = document.getElementById('empAddBtn');
     if (addBtn) addBtn.style.display = can('employees_add') ? 'flex' : 'none';
+
+    // ⚠️ عرض القائمة
     const el = document.getElementById('empList');
     if (!el) return;
+
     if (emps.length === 0) {
       el.innerHTML = '<div class="empty"><div class="ico">👥</div>لا يوجد موظفون</div>';
       return;
     }
+
+    const displayEmps = emps.slice(0, Employees._displayLimit);
+
     let html = '';
-    for (const e of emps) {
-      html += '<div class="list-item"><div class="info">' +
-        '<h4>' + Utils.esc(e.name) + (e.code ? ' <small style="color:#666;">(' + Utils.esc(e.code) + ')</small>' : '') + '</h4>' +
-        '<p>' + Utils.esc(e.job_title || '') + ' - ' + Utils.esc(e.phone || 'بدون رقم') + '</p>' +
-        '<p style="color:var(--gold);font-weight:600;">راتب: ' + Utils.fmtMoney(e.basic_salary) + '</p>' +
-        '<p style="font-size:11px;">الدور: ' + Utils.esc(PERMISSIONS[e.role] ? PERMISSIONS[e.role].label : e.role) + '</p>' +
-      '</div>' +
-      '<div class="actions">' +
-        (can('employees_edit') ? '<button class="btn btn-primary btn-sm" onclick="Employees.edit(\'' + e.uid + '\')">✏️</button>' : '') +
-        (can('employees_delete') && e.uid !== State.currentUser.uid
-          ? '<button class="btn btn-danger btn-sm" onclick="Employees.remove(\'' + e.uid + '\')">🗑️</button>' : '') +
-      '</div></div>';
+    for (const e of displayEmps) {
+      const initial = (e.name || '?').charAt(0);
+      const empAtt = att.filter(function (a) { return a.employee_uid === e.uid && a.date === today; });
+      const presentNow = empAtt.some(function (a) { return a.check_in && !a.check_out; });
+      const statusColor = e.active === false ? '#888' : presentNow ? 'var(--green-2)' : 'var(--gold)';
+      const statusLabel = e.active === false ? '🚫 غير نشط' : presentNow ? '✓ حاضر' : '⚪ لم يحضر';
+
+      html += '<div class="list-item" style="cursor:pointer;" onclick="Employees.viewDetails(\'' + e.uid + '\')">' +
+        '<div style="display:flex;gap:12px;align-items:center;flex:1;">' +
+          '<div style="width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--gold-2));display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#000;flex-shrink:0;">' + Utils.esc(initial) + '</div>' +
+          '<div class="info" style="flex:1;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+              '<h4 style="margin:0;font-size:15px;">' + Utils.esc(e.name) + '</h4>' +
+              '<span style="font-size:11px;color:' + statusColor + ';font-weight:700;">' + statusLabel + '</span>' +
+            '</div>' +
+            (e.code ? '<p style="font-size:11px;color:#888;">🆔 ' + Utils.esc(e.code) + '</p>' : '') +
+            '<p style="font-size:12px;">💼 ' + Utils.esc(e.job_title || '-') + '</p>' +
+            (e.phone ? '<p style="font-size:11px;">📞 ' + Utils.esc(e.phone) + '</p>' : '') +
+            '<p style="font-size:12px;color:var(--gold);font-weight:700;margin-top:6px;">💰 ' + Utils.fmtMoney(e.basic_salary) + '</p>' +
+          '</div>' +
+        '</div>' +
+        '<div class="actions" style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">' +
+          (can('employees_edit') ? '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();Employees.edit(\'' + e.uid + '\')">✏️</button>' : '') +
+          (can('employees_delete') && e.uid !== State.currentUser.uid
+            ? '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();Employees.remove(\'' + e.uid + '\')">🗑️</button>'
+            : '') +
+        '</div>' +
+      '</div>';
     }
+
+    if (emps.length > Employees._displayLimit) {
+      html += '<button class="btn btn-outline btn-full" onclick="Employees.loadMore()" style="margin:10px 12px;">عرض المزيد (' + (emps.length - Employees._displayLimit) + ' متبقي)</button>';
+    }
+
     el.innerHTML = html;
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔍 الفلاتر
+  // ═══════════════════════════════════════════════════════════════════
   search: Utils.debounce(function () { Employees.render(); }, 250),
 
+  setRoleFilter(role) {
+    Employees._filters.role = role;
+    document.querySelectorAll('#empRoleFilter .filter-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.role === role);
+    });
+    Employees._displayLimit = 50;
+    Employees.render();
+  },
+
+  setStatusFilter(status) {
+    Employees._filters.status = status;
+    document.querySelectorAll('#empStatusFilter .filter-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.status === status);
+    });
+    Employees._displayLimit = 50;
+    Employees.render();
+  },
+
+  setSort(sort) {
+    Employees._filters.sort = sort;
+    Employees._displayLimit = 50;
+    Employees.render();
+  },
+
+  resetFilters() {
+    Employees._filters = { search: '', role: 'all', status: 'active', sort: 'newest' };
+    Employees._displayLimit = 50;
+    const searchEl = document.getElementById('empSearch');
+    if (searchEl) searchEl.value = '';
+    document.querySelectorAll('#empRoleFilter .filter-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.role === 'all');
+    });
+    document.querySelectorAll('#empStatusFilter .filter-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.status === 'active');
+    });
+    const sortEl = document.getElementById('empSort');
+    if (sortEl) sortEl.value = 'newest';
+    Employees.render();
+  },
+
+  loadMore() {
+    Employees._displayLimit += 50;
+    Employees.render();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 👁️ عرض التفاصيل
+  // ═══════════════════════════════════════════════════════════════════
+  viewDetails(uid) {
+    const e = (cache.employees || []).find(function (x) { return x.uid === uid; });
+    if (!e) return;
+
+    const initial = (e.name || '?').charAt(0);
+
+    // ⚠️ إحصائيات الموظف
+    const att = (cache.attendance || []).filter(function (a) { return a.employee_uid === uid; });
+    const leaves = (cache.leaves || []).filter(function (l) { return l.employee_uid === uid; });
+    const payrolls = (cache.payroll || []).filter(function (p) { return p.employee_uid === uid; });
+    const txs = (cache.employee_transactions || []).filter(function (t) { return t.employee_uid === uid; });
+
+    // ⚠️ الشهر الحالي
+    const monthKey = Utils.getMonthKey();
+    const monthAtt = att.filter(function (a) { return a.date && a.date.startsWith(monthKey); });
+    const presentDays = monthAtt.filter(function (a) { return a.check_in && a.status === 'present'; }).length;
+    const totalHours = monthAtt.reduce(function (s, a) { return s + (Number(a.work_hours) || 0); }, 0);
+    const totalLateMinutes = monthAtt.reduce(function (s, a) { return s + (Number(a.minutes_late) || 0); }, 0);
+
+    const totalAdvances = txs.filter(function (t) { return t.type === 'advance'; })
+      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+    const totalBonuses = txs.filter(function (t) { return t.type === 'bonus'; })
+      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+    const totalDeductions = txs.filter(function (t) { return t.type === 'deduction'; })
+      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+
+    const totalPaidSalary = payrolls.filter(function (p) { return p.status === 'paid'; })
+      .reduce(function (s, p) { return s + (Number(p.net_salary) || 0); }, 0);
+
+    let html = '';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 👤 البطاقة الأساسية
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div style="text-align:center;padding:15px 0;">' +
+      '<div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--gold-2));display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;color:#000;margin:0 auto 10px;">' + Utils.esc(initial) + '</div>' +
+      '<h3 style="color:var(--gold);font-size:18px;margin-bottom:6px;">' + Utils.esc(e.name) + '</h3>' +
+      '<p style="color:#aaa;font-size:13px;">' + Utils.esc(e.job_title || '-') + '</p>' +
+      '<span class="badge ' + (e.active !== false ? 'badge-green' : 'badge-red') + '">' +
+        (e.active !== false ? '✓ نشط' : '🚫 غير نشط') +
+      '</span>' +
+      ' <span class="badge badge-blue">' + Utils.esc(PERMISSIONS[e.role] ? PERMISSIONS[e.role].label : e.role) + '</span>' +
+    '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📞 معلومات التواصل
+    // ═══════════════════════════════════════════════════════════════
+    if (e.phone || e.national_id || e.hire_date) {
+      html += '<div class="card" style="margin-top:12px;">' +
+        '<h3>📞 معلومات شخصية</h3>';
+      if (e.phone) {
+        html += '<div style="padding:6px 0;"><strong>📱 الهاتف:</strong> ' +
+          '<a href="tel:' + Utils.esc(e.phone) + '" style="color:var(--gold);text-decoration:none;">' + Utils.esc(e.phone) + '</a></div>';
+      }
+      if (e.national_id) {
+        html += '<div style="padding:6px 0;"><strong>🆔 الرقم القومي:</strong> ' + Utils.esc(e.national_id) + '</div>';
+      }
+      if (e.hire_date) {
+        html += '<div style="padding:6px 0;"><strong>📅 تاريخ التعيين:</strong> ' + Utils.esc(e.hire_date) + '</div>';
+      }
+      if (e.code) {
+        html += '<div style="padding:6px 0;"><strong>🔢 الكود:</strong> ' + Utils.esc(e.code) + '</div>';
+      }
+      html += '</div>';
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 💰 الراتب
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card" style="margin-top:12px;">' +
+      '<h3>💰 الراتب والبدلات</h3>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;"><span>الأساسي:</span><strong style="color:var(--gold);">' + Utils.fmtMoney(e.basic_salary) + '</strong></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;"><span>بدل سكن:</span><strong>' + Utils.fmtMoney(e.housing_allowance) + '</strong></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;"><span>بدل مواصلات:</span><strong>' + Utils.fmtMoney(e.transport_allowance) + '</strong></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px dashed rgba(212,175,55,.3);margin-top:6px;padding-top:8px;">' +
+        '<span>الإجمالي:</span>' +
+        '<strong style="color:var(--green-2);font-size:16px;">' +
+          Utils.fmtMoney((Number(e.basic_salary) || 0) + (Number(e.housing_allowance) || 0) + (Number(e.transport_allowance) || 0)) +
+        '</strong>' +
+      '</div>' +
+    '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📊 إحصائيات الشهر الحالي
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card" style="margin-top:12px;">' +
+      '<h3>📊 إحصائيات الشهر الحالي</h3>' +
+      '<div class="stats-grid" style="padding:0;">' +
+        '<div class="stat-card green"><div class="label">أيام الحضور</div><div class="value">' + presentDays + '</div></div>' +
+        '<div class="stat-card blue"><div class="label">ساعات العمل</div><div class="value">' + totalHours.toFixed(1) + '</div></div>' +
+        '<div class="stat-card orange"><div class="label">دقائق التأخير</div><div class="value">' + totalLateMinutes + '</div></div>' +
+        '<div class="stat-card gold"><div class="label">راتب الشهر</div><div class="value" style="font-size:14px;">' + Utils.fmtNum((Number(e.basic_salary) || 0) + (Number(e.housing_allowance) || 0) + (Number(e.transport_allowance) || 0)) + '</div></div>' +
+      '</div>' +
+    '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📈 الإجماليات
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card" style="margin-top:12px;">' +
+      '<h3>📈 الإجماليات</h3>' +
+      '<div class="stats-grid" style="padding:0;">' +
+        '<div class="stat-card red"><div class="label">إجمالي السلف</div><div class="value" style="font-size:14px;">' + Utils.fmtNum(totalAdvances) + '</div></div>' +
+        '<div class="stat-card green"><div class="label">إجمالي المكافآت</div><div class="value" style="font-size:14px;">' + Utils.fmtNum(totalBonuses) + '</div></div>' +
+        '<div class="stat-card red"><div class="label">إجمالي الخصومات</div><div class="value" style="font-size:14px;">' + Utils.fmtNum(totalDeductions) + '</div></div>' +
+        '<div class="stat-card blue"><div class="label">إجمالي المرتبات المدفوعة</div><div class="value" style="font-size:14px;">' + Utils.fmtNum(totalPaidSalary) + '</div></div>' +
+      '</div>' +
+    '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // ⚙️ العمليات
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card" style="margin-top:12px;">' +
+      '<h3>⚙️ العمليات</h3>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+        '<button class="btn btn-info" onclick="Modal.close();Employees.openStatement(\'' + uid + '\')">📊 كشف الحساب</button>' +
+        (can('employees_edit') ? '<button class="btn btn-primary" onclick="Modal.close();Employees.edit(\'' + uid + '\')">✏️ تعديل</button>' : '') +
+        (e.phone ? '<button class="btn btn-success" onclick="Employees.sendWhatsApp(\'' + uid + '\')">💬 واتساب</button>' : '') +
+        (can('employees_delete') && e.uid !== State.currentUser.uid
+          ? '<button class="btn btn-danger" onclick="Modal.close();Employees.remove(\'' + uid + '\')">🗑️ حذف</button>'
+          : '') +
+      '</div>' +
+    '</div>';
+
+    Modal.open('👤 تفاصيل الموظف', html, null, 'إغلاق');
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📊 فتح كشف الحساب
+  // ═══════════════════════════════════════════════════════════════════
+  openStatement(uid) {
+    Modal.close();
+    App.openPage('statements');
+    setTimeout(function () {
+      // ⚠️ التبديل لتاب الموظفين
+      const empTab = document.querySelector('#page-statements .tab:nth-child(2)');
+      if (empTab) empTab.click();
+
+      setTimeout(function () {
+        const selectEl = document.getElementById('stmtEmp');
+        if (selectEl) {
+          selectEl.value = uid;
+          Statements.loadEmployee();
+        }
+      }, 200);
+    }, 300);
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 💬 واتساب
+  // ═══════════════════════════════════════════════════════════════════
+  sendWhatsApp(uid) {
+    const e = (cache.employees || []).find(function (x) { return x.uid === uid; });
+    if (!e || !e.phone) return Toast.show('لا يوجد رقم', 'error');
+
+    let phone = e.phone.replace(/\D/g, '');
+    if (phone.startsWith('0')) phone = '20' + phone.substring(1);
+
+    const msg = 'مرحباً ' + e.name + '،\n' +
+      'نتمنى لك يوماً سعيداً 🌹\n' +
+      'شركة البسملة';
+
+    window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
+    Modal.close();
+    Toast.show('✅ تم فتح واتساب');
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // ➕ إضافة/تعديل
+  // ═══════════════════════════════════════════════════════════════════
   async edit(uid) {
     if (uid && !requirePermission('employees_edit', 'تعديل')) return;
     if (!uid && !requirePermission('employees_add', 'إضافة')) return;
-    let e = { name: '', phone: '', job_title: '', basic_salary: 0, housing_allowance: 0, transport_allowance: 0, insurance_deduction: 0, tax_deduction: 0, role: 'sales', code: '', hire_date: Utils.todayStr(), national_id: '' };
+
+    let e = {
+      name: '', phone: '', job_title: '',
+      basic_salary: 0, housing_allowance: 0, transport_allowance: 0,
+      insurance_deduction: 0, tax_deduction: 0,
+      role: 'sales', code: '',
+      hire_date: Utils.todayStr(), national_id: ''
+    };
     if (uid) e = (cache.employees || []).find(function (x) { return x.uid === uid; }) || e;
 
     const html =
-      '<div class="form-group"><label>الاسم *</label><input id="f_name" value="' + Utils.esc(e.name || '') + '"></div>' +
+      '<div class="form-group"><label>الاسم *</label><input id="f_name" value="' + Utils.esc(e.name || '') + '" autofocus></div>' +
       '<div class="form-group"><label>الكود</label><input id="f_code" value="' + Utils.esc(e.code || '') + '"></div>' +
       '<div class="form-group"><label>الوظيفة</label><input id="f_job" value="' + Utils.esc(e.job_title || '') + '"></div>' +
       '<div class="form-group"><label>الهاتف</label><input id="f_phone" value="' + Utils.esc(e.phone || '') + '" inputmode="tel"></div>' +
       '<div class="form-group"><label>الرقم القومي</label><input id="f_nid" value="' + Utils.esc(e.national_id || '') + '"></div>' +
       '<div class="form-group"><label>تاريخ التعيين</label><input type="date" id="f_hire" value="' + (e.hire_date || Utils.todayStr()) + '"></div>' +
-      '<div class="form-group"><label>الدور</label><select id="f_role">' +
-        '<option value="admin" ' + (e.role === 'admin' ? 'selected' : '') + '>مدير</option>' +
-        '<option value="hr" ' + (e.role === 'hr' ? 'selected' : '') + '>موارد بشرية</option>' +
-        '<option value="sales" ' + (e.role === 'sales' ? 'selected' : '') + '>مبيعات</option>' +
-        '<option value="purchases" ' + (e.role === 'purchases' ? 'selected' : '') + '>مشتريات</option>' +
-        '<option value="warehouse" ' + (e.role === 'warehouse' ? 'selected' : '') + '>أمين مخزن</option>' +
-        '<option value="accountant" ' + (e.role === 'accountant' ? 'selected' : '') + '>محاسب</option>' +
-      '</select></div>' +
+      '<div class="form-group"><label>الدور *</label>' +
+        '<select id="f_role">' +
+          '<option value="admin" ' + (e.role === 'admin' ? 'selected' : '') + '>👑 مدير</option>' +
+          '<option value="hr" ' + (e.role === 'hr' ? 'selected' : '') + '>📋 موارد بشرية</option>' +
+          '<option value="sales" ' + (e.role === 'sales' ? 'selected' : '') + '>🛒 مبيعات</option>' +
+          '<option value="purchases" ' + (e.role === 'purchases' ? 'selected' : '') + '>📦 مشتريات</option>' +
+          '<option value="warehouse" ' + (e.role === 'warehouse' ? 'selected' : '') + '>🏭 أمين مخزن</option>' +
+          '<option value="accountant" ' + (e.role === 'accountant' ? 'selected' : '') + '>💰 محاسب</option>' +
+        '</select>' +
+      '</div>' +
       '<div class="form-group"><label>الراتب الأساسي</label><input id="f_basic" type="number" value="' + (e.basic_salary || 0) + '"></div>' +
       '<div class="form-group"><label>بدل سكن</label><input id="f_housing" type="number" value="' + (e.housing_allowance || 0) + '"></div>' +
       '<div class="form-group"><label>بدل مواصلات</label><input id="f_trans" type="number" value="' + (e.transport_allowance || 0) + '"></div>' +
@@ -4379,9 +4706,12 @@ const Employees = {
       const nameEl = document.getElementById('f_name');
       const name = nameEl ? nameEl.value.trim() : '';
       if (!name) return Toast.show('الاسم مطلوب', 'error');
+
       const newId = uid || Utils.genId('EMP');
+
       const data = Object.assign({}, e, {
-        uid: newId, name: name,
+        uid: newId,
+        name: name,
         code: document.getElementById('f_code').value,
         job_title: document.getElementById('f_job').value,
         phone: document.getElementById('f_phone').value,
@@ -4396,11 +4726,14 @@ const Employees = {
         active: true,
         created_at: e.created_at || Utils.nowISO()
       });
+
       await Sync.save('employees', newId, data);
-      // ⚠️ حدّث cache فوراً
+
+      // ⚠️ تحديث cache
       const idx = (cache.employees || []).findIndex(function (x) { return x.uid === newId; });
       if (idx >= 0) cache.employees[idx] = data;
       else cache.employees.push(data);
+
       await Activity.log('employee_save', name);
       Modal.close();
       Toast.show('✅ تم الحفظ');
@@ -4408,13 +4741,89 @@ const Employees = {
     });
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 🗑️ حذف
+  // ═══════════════════════════════════════════════════════════════════
   async remove(uid) {
     if (!requirePermission('employees_delete', 'حذف')) return;
     if (uid === State.currentUser.uid) return Toast.show('لا يمكنك حذف نفسك', 'error');
-    if (!confirm('حذف الموظف؟')) return;
+
+    const e = (cache.employees || []).find(function (x) { return x.uid === uid; });
+    if (!e) return;
+
+    if (!confirm('حذف الموظف: ' + e.name + '؟\n\nسيتم حذفه من القائمة (soft delete).')) return;
+
     await Sync.softDelete('employees', uid);
+    await Activity.log('employee_delete', e.name);
     Toast.show('تم الحذف');
     Employees.render();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📊 تصدير Excel
+  // ═══════════════════════════════════════════════════════════════════
+  exportExcel() {
+    const emps = (cache.employees || []).filter(function (e) { return e.active !== false; });
+
+    const items = emps.map(function (e) {
+      const total = (Number(e.basic_salary) || 0) + (Number(e.housing_allowance) || 0) + (Number(e.transport_allowance) || 0);
+      return {
+        product_name: e.name + (e.code ? ' (' + e.code + ')' : '') + ' - ' + (e.job_title || ''),
+        quantity: 1,
+        price: total,
+        total: total
+      };
+    });
+
+    const total = emps.reduce(function (s, e) {
+      return s + (Number(e.basic_salary) || 0) + (Number(e.housing_allowance) || 0) + (Number(e.transport_allowance) || 0);
+    }, 0);
+
+    const doc = {
+      invoice_no: 'EMP-REP-' + Date.now(),
+      date: Utils.nowISO(),
+      party_name: 'تقرير الموظفين',
+      subtotal: total,
+      discount: 0,
+      tax: 0,
+      total: total,
+      paid: 0,
+      remaining: total
+    };
+
+    Export.toExcel(doc, items, 'sales');
+  },
+
+  async exportPDF() {
+    const emps = (cache.employees || []).filter(function (e) { return e.active !== false; });
+
+    const items = emps.map(function (e) {
+      const total = (Number(e.basic_salary) || 0) + (Number(e.housing_allowance) || 0) + (Number(e.transport_allowance) || 0);
+      return {
+        product_name: e.name + (e.code ? ' (' + e.code + ')' : '') + ' - ' + (e.job_title || ''),
+        quantity: 1,
+        price: total,
+        total: total
+      };
+    });
+
+    const total = emps.reduce(function (s, e) {
+      return s + (Number(e.basic_salary) || 0) + (Number(e.housing_allowance) || 0) + (Number(e.transport_allowance) || 0);
+    }, 0);
+
+    const doc = {
+      invoice_no: 'EMP-PDF-' + Date.now(),
+      date: Utils.nowISO(),
+      party_name: 'تقرير الموظفين',
+      subtotal: total,
+      discount: 0,
+      tax: 0,
+      total: total,
+      paid: 0,
+      remaining: total
+    };
+
+    await Export.toPDF(doc, items, 'sales');
   }
 };
 
