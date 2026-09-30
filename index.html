@@ -2440,12 +2440,58 @@ body::after {
        👥 صفحة الموظفين
        ═══════════════════════════════════════════════════════════════ -->
   <div id="page-employees" class="page hidden">
-    <div class="search-bar">
-      <span>🔍</span>
-      <input type="text" id="empSearch" placeholder="ابحث بالاسم أو الكود..." oninput="Employees.search()">
+  <!-- ⚠️ الإحصائيات -->
+  <div id="empStats" class="stats-grid"></div>
+
+  <!-- ⚠️ البحث -->
+  <div class="search-bar">
+    <span>🔍</span>
+    <input type="text" id="empSearch" placeholder="ابحث بالاسم أو الكود أو الهاتف..." oninput="Employees.search()">
+  </div>
+
+  <!-- ⚠️ فلتر الحالة -->
+  <div style="padding:0 12px;margin-bottom:8px;display:flex;gap:6px;overflow-x:auto;" id="empStatusFilter">
+    <button class="btn btn-sm btn-primary filter-btn active" data-status="active" onclick="Employees.setStatusFilter('active')">✓ النشطون</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-status="inactive" onclick="Employees.setStatusFilter('inactive')">🚫 غير النشطين</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-status="all" onclick="Employees.setStatusFilter('all')">📋 الكل</button>
+  </div>
+
+  <!-- ⚠️ فلتر الدور -->
+  <div style="padding:0 12px;margin-bottom:8px;display:flex;gap:6px;overflow-x:auto;" id="empRoleFilter">
+    <button class="btn btn-sm btn-primary filter-btn active" data-role="all" onclick="Employees.setRoleFilter('all')">📋 كل الأدوار</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-role="admin" onclick="Employees.setRoleFilter('admin')">👑 مدير</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-role="hr" onclick="Employees.setRoleFilter('hr')">📋 HR</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-role="sales" onclick="Employees.setRoleFilter('sales')">🛒 مبيعات</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-role="purchases" onclick="Employees.setRoleFilter('purchases')">📦 مشتريات</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-role="warehouse" onclick="Employees.setRoleFilter('warehouse')">🏭 مخزن</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-role="accountant" onclick="Employees.setRoleFilter('accountant')">💰 محاسب</button>
+  </div>
+
+  <!-- ⚠️ الترتيب -->
+  <div class="search-bar">
+    <span>🔽</span>
+    <select id="empSort" style="flex:1;background:transparent;border:none;color:var(--text);font-size:15px;outline:none;" onchange="Employees.setSort(this.value)">
+      <option value="newest">🆕 الأحدث</option>
+      <option value="name">🔤 الاسم</option>
+      <option value="salary_high">💰 الراتب الأعلى</option>
+      <option value="salary_low">📉 الراتب الأقل</option>
+    </select>
+    <button class="btn btn-outline btn-sm" onclick="Employees.resetFilters()">🔄</button>
+  </div>
+
+  <!-- ⚠️ القائمة -->
+  <div id="empList"></div>
+
+  <!-- ⚠️ أزرار التصدير -->
+  <div class="card" style="margin-top:12px;">
+    <h3>📤 تصدير الموظفين</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <button class="btn btn-primary" onclick="Employees.exportExcel()">📊 Excel</button>
+      <button class="btn btn-info" onclick="Employees.exportPDF()">📄 PDF</button>
     </div>
-    <div id="empList"></div>
-    <button class="fab" onclick="Employees.edit()" id="empAddBtn">+</button>
+  </div>
+
+  <button class="fab" onclick="Employees.edit()" id="empAddBtn">+</button>
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
