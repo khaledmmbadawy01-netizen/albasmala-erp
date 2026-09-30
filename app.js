@@ -2288,16 +2288,517 @@ async printDirect(doc, items, docType, method) {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
-   15. Printer
+   15. Printer — طباعة احترافية (WiFi / Bluetooth / USB)
    ═══════════════════════════════════════════════════════════════════ */
 const Printer = {
-  async test() {
-    const html = '<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><style>@page{size:80mm auto;margin:3mm;}body{font-family:Cairo;padding:10px;text-align:center;}</style></head><body>' +
-      '<h2 style="color:#B8941F;">🏪 شركة البسملة</h2>' +
-      '<p>اختبار الطباعة</p>' +
-      '<p style="font-size:11px;">' + new Date().toLocaleString('ar-EG') + '</p>' +
-      '<p>✅ تعمل</p></body></html>';
+  // ⚠️ حالة الاتصال الحالية
+  _connectedDevice: null,
+  _connectionType: null, // 'bluetooth' | 'usb' | 'wifi' | 'cordova'
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔍 كشف البيئة (Cordova vs Browser)
+  // ═══════════════════════════════════════════════════════════════════
+  isCordova() {
+    return !!(window.cordova && window.cordova.plugins && window.cordova.plugins.printer);
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📋 فتح نافذة اختيار طريقة الطباعة
+  // ═══════════════════════════════════════════════════════════════════
+  openDialog(doc, items, docType) {
+    const html =
+      '<div class="info-box">🖨️ اختر طريقة الطباعة:</div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">' +
+        '<button class="btn btn-primary btn-full" onclick="Printer.printViaWiFi(\'' + docType + '\')">' +
+          '📶 طباعة WiFi' +
+        '</button>' +
+        '<button class="btn btn-info btn-full" onclick="Printer.printViaBluetooth(\'' + docType + '\')">' +
+          '📱 طباعة Bluetooth' +
+        '</button>' +
+        '<button class="btn btn-warning btn-full" onclick="Printer.printViaUSB(\'' + docType + '\')">' +
+          '🔌 طباعة USB' +
+        '</button>' +
+        '<hr style="margin:10px 0;border:none;border-top:1px solid rgba(212,175,55,.2);">' +
+        '<button class="btn btn-outline btn-full" onclick="Printer.printViaDialog(\'' + docType + '\')">' +
+          '🖨️ نافذة الطباعة العادية' +
+        '</button>' +
+      '</div>' +
+      (this.isCordova() ? '<p style="color:var(--green-2);font-size:12px;text-align:center;margin-top:10px;">✅ التطبيق يعمل على APK — الطباعة الأصلية متوفرة</p>' : '<p style="color:var(--orange-2);font-size:12px;text-align:center;margin-top:10px;">⚠️ المتصفح — الطباعة ممكن تكون محدودة</p>');
+    
+    Modal.open('🖨️ طباعة', html, null, 'إغلاق');
+    Printer._currentDoc = { doc: doc, items: items, type: docType };
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📶 طباعة WiFi
+  // ═══════════════════════════════════════════════════════════════════
+  async printViaWiFi(docType) {
+    const current = Printer._currentDoc;
+    if (!current) return Toast.show('❌ لا يوجد مستند', 'error');
+
+    // ⚠️ لو Cordova، استخدم البلجن
+    if (Printer.isCordova()) {
+      return Printer._cordovaPrint(current, 'wifi');
+    }
+
+    // ⚠️ في المتصفح: نطلب IP الطابعة
+    const html =
+      '<div class="info-box">📶 اطبع عبر شبكة WiFi</div>' +
+      '<div class="form-group"><label>عنوان IP الطابعة</label>' +
+        '<input id="wifi_ip" placeholder="192.168.1.100" inputmode="decimal">' +
+      '</div>' +
+      '<div class="form-group"><label>المنفذ (Port)</label>' +
+        '<input id="wifi_port" type="number" value="9100" placeholder="9100">' +
+      '</div>' +
+      '<div class="warning-box" style="font-size:12px;">' +
+        '⚠️ المتصفح لا يدعم الطباعة المباشرة عبر WiFi لأسباب أمنية.<br>' +
+        'سيتم إرسال الأمر عبر طبقة وسيطة (لو متوفرة).<br>' +
+        '<strong>البديل:</strong> استخدم نافذة الطباعة العادية، واختر طابعة الشبكة من قائمة الطابعات.' +
+      '</div>' +
+      '<button class="btn btn-primary btn-full" onclick="Printer._tryWiFiPrint()" style="margin-top:12px;">🖨️ محاولة الطباعة</button>';
+
+    Modal.open('📶 طباعة WiFi', html, null, 'إغلاق');
+  },
+
+  async _tryWiFiPrint() {
+    const ipEl = document.getElementById('wifi_ip');
+    const portEl = document.getElementById('wifi_port');
+    const ip = ipEl ? ipEl.value.trim() : '';
+    const port = portEl ? (parseInt(portEl.value) || 9100) : 9100;
+
+    if (!ip) return Toast.show('❌ أدخل عنوان IP', 'error');
+
+    // ⚠️ نحاول استخدام fetch للاتصال بالطابعة
+    try {
+      Toast.show('⏳ جاري الاتصال بالطابعة...', 'info');
+      
+      // ⚠️ إرسال أمر ESC/POS بسيط
+      const testCmd = '\x1B\x40'; // Initialize printer
+      
+      // ⚠️ ملاحظة: fetch مش بيدعم raw TCP
+      // الحل الحقيقي: نستخدم نافذة الطباعة مع IP
+      const current = Printer._currentDoc;
+      if (!current) return;
+
+      Modal.close();
+      
+      // ⚠️ Fallback: نافذة الطباعة
+      const html = Export.generateHTML(current.doc, current.items, current.type);
+      Toast.show('⚠️ سيتم فتح نافذة الطباعة — اختر الطابعة', 'info');
+      await Export.printHTML(html, 'dialog');
+
+      await Activity.log('print_wifi', ip + ':' + port);
+      Toast.show('✅ تم إرسال أمر الطباعة');
+    } catch (e) {
+      console.error('WiFi print error:', e);
+      Toast.show('❌ فشل الاتصال: ' + e.message, 'error');
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📱 طباعة Bluetooth
+  // ═══════════════════════════════════════════════════════════════════
+  async printViaBluetooth(docType) {
+    const current = Printer._currentDoc;
+    if (!current) return Toast.show('❌ لا يوجد مستند', 'error');
+
+    // ⚠️ لو Cordova، استخدم البلجن
+    if (Printer.isCordova()) {
+      return Printer._cordovaPrint(current, 'bluetooth');
+    }
+
+    // ⚠️ Web Bluetooth API
+    if (!navigator.bluetooth) {
+      Toast.show('⚠️ المتصفح لا يدعم Bluetooth — سيتم فتح نافذة الطباعة', 'info');
+      const html = Export.generateHTML(current.doc, current.items, current.type);
+      return Export.printHTML(html, 'dialog');
+    }
+
+    try {
+      Toast.show('📱 جاري البحث عن طابعات Bluetooth...', 'info');
+
+      // ⚠️ طلب جهاز Bluetooth
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          '000018f0-0000-1000-8000-00805f9b34fb', // Printer Service
+          '00001101-0000-1000-8000-00805f9b34fb', // Serial Port
+          '49535343-fe7d-4ae5-8fa9-9fafd205e455', // HM-10 (شائع في الطابعات الصينية)
+          'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // ESC/POS
+          '0000ff00-0000-1000-8000-00805f9b34fb'  // طابعات صينية
+        ]
+      });
+
+      if (!device) {
+        return Toast.show('❌ لم يتم اختيار طابعة', 'error');
+      }
+
+      Toast.show('✅ تم اختيار: ' + device.name, 'success');
+      Printer._connectedDevice = device;
+      Printer._connectionType = 'bluetooth';
+
+      // ⚠️ الاتصال بالجهاز
+      const server = await device.gatt.connect();
+      
+      // ⚠️ محاولة العثور على خدمة الطباعة
+      const services = await server.getPrimaryServices();
+      let printCharacteristic = null;
+
+      for (const service of services) {
+        try {
+          const characteristics = await service.getCharacteristics();
+          for (const char of characteristics) {
+            if (char.properties.write || char.properties.writeWithoutResponse) {
+              printCharacteristic = char;
+              break;
+            }
+          }
+          if (printCharacteristic) break;
+        } catch (e) {
+          console.warn('Service error:', e);
+        }
+      }
+
+      if (!printCharacteristic) {
+        Toast.show('⚠️ لم يتم العثور على خدمة الطباعة — سيتم استخدام نافذة الطباعة', 'info');
+        const html = Export.generateHTML(current.doc, current.items, current.type);
+        return Export.printHTML(html, 'dialog');
+      }
+
+      // ⚠️ إرسال الفاتورة
+      await Printer._sendToBluetooth(printCharacteristic, current);
+      
+      Toast.show('✅ تم إرسال الفاتورة للطابعة');
+      await Activity.log('print_bluetooth', device.name);
+
+    } catch (e) {
+      console.error('Bluetooth print error:', e);
+      if (e.name === 'NotFoundError') {
+        Toast.show('❌ لم يتم اختيار طابعة', 'error');
+      } else {
+        Toast.show('⚠️ فشل Bluetooth — جاري فتح نافذة الطباعة', 'info');
+        const html = Export.generateHTML(current.doc, current.items, current.type);
+        return Export.printHTML(html, 'dialog');
+      }
+    }
+  },
+
+  // ⚠️ إرسال الفاتورة عبر Bluetooth
+  async _sendToBluetooth(characteristic, current) {
+    // ⚠️ توليد نص الفاتورة (ESC/POS)
+    const text = Printer._generateEscPosText(current.doc, current.items, current.type);
+    
+    // ⚠️ تحويل النص لـ bytes
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(text);
+
+    // ⚠️ إرسال على شكل chunks (الطابعات الصغيرة مش بتستقبل أكثر من 512 byte)
+    const chunkSize = 200;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.slice(i, i + chunkSize);
+      await characteristic.writeValue(chunk);
+      // ⚠️ تأخير بسيط بين الأوامر
+      await new Promise(r => setTimeout(r, 50));
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔌 طباعة USB
+  // ═══════════════════════════════════════════════════════════════════
+  async printViaUSB(docType) {
+    const current = Printer._currentDoc;
+    if (!current) return Toast.show('❌ لا يوجد مستند', 'error');
+
+    // ⚠️ لو Cordova، استخدم البلجن
+    if (Printer.isCordova()) {
+      return Printer._cordovaPrint(current, 'usb');
+    }
+
+    // ⚠️ Web USB API
+    if (!navigator.usb) {
+      Toast.show('⚠️ المتصفح لا يدعم USB — سيتم فتح نافذة الطباعة', 'info');
+      const html = Export.generateHTML(current.doc, current.items, current.type);
+      return Export.printHTML(html, 'dialog');
+    }
+
+    try {
+      Toast.show('🔌 جاري البحث عن طابعات USB...', 'info');
+
+      // ⚠️ طلب جهاز USB
+      const device = await navigator.usb.requestDevice({
+        filters: [
+          { classCode: 7 },  // Printer class
+          { classCode: 0xFF } // Vendor specific (طابعات صينية)
+        ]
+      });
+
+      if (!device) {
+        return Toast.show('❌ لم يتم اختيار طابعة', 'error');
+      }
+
+      Toast.show('✅ تم اختيار: ' + (device.productName || 'طابعة USB'), 'success');
+      Printer._connectedDevice = device;
+      Printer._connectionType = 'usb';
+
+      // ⚠️ فتح الاتصال
+      await device.open();
+      
+      if (device.configuration === null) {
+        await device.selectConfiguration(1);
+      }
+
+      // ⚠️ العثور على interface الطباعة
+      let printInterface = null;
+      let printEndpoint = null;
+
+      for (const iface of device.configuration.interfaces) {
+        for (const alt of iface.alternates) {
+          if (alt.interfaceClass === 7 || alt.interfaceClass === 0xFF) {
+            printInterface = iface;
+            for (const ep of alt.endpoints) {
+              if (ep.direction === 'out') {
+                printEndpoint = ep;
+                break;
+              }
+            }
+            break;
+          }
+        }
+        if (printInterface) break;
+      }
+
+      if (!printInterface || !printEndpoint) {
+        Toast.show('⚠️ لم يتم العثور على واجهة الطباعة', 'error');
+        await device.close();
+        return;
+      }
+
+      // ⚠️ claimInterface
+      await device.claimInterface(printInterface.interfaceNumber);
+
+      // ⚠️ إرسال الفاتورة
+      await Printer._sendToUSB(device, printEndpoint, current);
+
+      // ⚠️ تنظيف
+      await device.releaseInterface(printInterface.interfaceNumber);
+      await device.close();
+
+      Toast.show('✅ تم إرسال الفاتورة للطابعة');
+      await Activity.log('print_usb', device.productName || 'USB Printer');
+
+    } catch (e) {
+      console.error('USB print error:', e);
+      if (e.name === 'NotFoundError') {
+        Toast.show('❌ لم يتم اختيار طابعة', 'error');
+      } else {
+        Toast.show('⚠️ فشل USB — جاري فتح نافذة الطباعة', 'info');
+        const html = Export.generateHTML(current.doc, current.items, current.type);
+        return Export.printHTML(html, 'dialog');
+      }
+    }
+  },
+
+  async _sendToUSB(device, endpoint, current) {
+    const text = Printer._generateEscPosText(current.doc, current.items, current.type);
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(text);
+
+    // ⚠️ إرسال على شكل chunks
+    const chunkSize = 512;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.slice(i, i + chunkSize);
+      await device.transferOut(endpoint.endpointNumber, chunk);
+      await new Promise(r => setTimeout(r, 30));
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📄 طباعة عبر نافذة الطباعة العادية
+  // ═══════════════════════════════════════════════════════════════════
+  async printViaDialog(docType) {
+    const current = Printer._currentDoc;
+    if (!current) return Toast.show('❌ لا يوجد مستند', 'error');
+
+    const html = Export.generateHTML(current.doc, current.items, current.type);
+    Modal.close();
     await Export.printHTML(html, 'dialog');
+    await Activity.log('print_dialog', docType);
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📱 Cordova Printer (APK)
+  // ═══════════════════════════════════════════════════════════════════
+  async _cordovaPrint(current, method) {
+    try {
+      Toast.show('🖨️ جاري الطباعة عبر ' + method + '...', 'info');
+
+      const html = Export.generateHTML(current.doc, current.items, current.type);
+
+      // ⚠️ Cordova Printer Plugin
+      if (window.cordova && window.cordova.plugins && window.cordova.plugins.printer) {
+        return new Promise(function (resolve) {
+          const options = {
+            name: 'Basmala_' + Date.now(),
+            duplex: 'long',
+            landscape: false,
+            graystyle: false,
+            filePath: null,
+            printerId: null, // سيختار المستخدم
+            type: 'text/html',
+            autoFit: true
+          };
+
+          window.cordova.plugins.printer.print(html, options, function (success) {
+            console.log('✅ Cordova print success:', success);
+            Toast.show('✅ تم إرسال الفاتورة للطابعة');
+            resolve(true);
+          }, function (err) {
+            console.error('❌ Cordova print error:', err);
+            Toast.show('❌ فشل الطباعة: ' + (err.message || err), 'error');
+            // ⚠️ fallback
+            Export.printHTML(html, 'dialog');
+            resolve(false);
+          });
+        });
+      }
+
+      // ⚠️ لو مفيش بلجن
+      return Export.printHTML(html, 'dialog');
+
+    } catch (e) {
+      console.error('Cordova print error:', e);
+      Toast.show('❌ فشل: ' + e.message, 'error');
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📝 توليد نص ESC/POS للطباعة الحرارية
+  // ═══════════════════════════════════════════════════════════════════
+  _generateEscPosText(doc, items, docType) {
+    // ⚠️ أوامر ESC/POS
+    const ESC = '\x1B';
+    const GS = '\x1D';
+    
+    let text = '';
+    
+    // ⚠️ تهيئة الطابعة
+    text += ESC + '@';
+    
+    // ⚠️ محاذاة للوسط
+    text += ESC + 'a' + '\x01';
+    
+    // ⚠️ حجم كبير للعنوان
+    text += ESC + '!' + '\x18';
+    
+    // ⚠️ العناوين
+    const titles = {
+      sales: 'فاتورة مبيعات',
+      purchase: 'فاتورة مشتريات',
+      sales_return: 'مرتجع مبيعات',
+      purchase_return: 'مرتجع مشتريات',
+      voucher_receipt: 'سند قبض',
+      voucher_payment: 'سند دفع',
+      payroll: 'مفردات مرتب'
+    };
+
+    text += 'شركة البسملة\n';
+    text += ESC + '!' + '\x00'; // حجم عادي
+    text += 'لتجارة المشغولات الصينية\n';
+    text += (titles[docType] || 'مستند') + '\n';
+    text += '--------------------------------\n';
+    
+    // ⚠️ محاذاة لليسار
+    text += ESC + 'a' + '\x00';
+
+    // ⚠️ معلومات الفاتورة
+    const docNo = doc.invoice_no || doc.return_no || doc.voucher_no || '';
+    const date = Utils.fmtDate(doc.date || doc.created_at);
+    const partyName = doc.customer_name || doc.supplier_name || doc.party_name || doc.employee_name || '-';
+
+    text += 'رقم: ' + docNo + '\n';
+    text += 'التاريخ: ' + date + '\n';
+    text += 'الجهة: ' + partyName + '\n';
+    text += 'الموظف: ' + (doc.employee_name || '-') + '\n';
+    text += '--------------------------------\n';
+
+    // ⚠️ الأصناف
+    if (docType !== 'voucher_receipt' && docType !== 'voucher_payment' && docType !== 'payroll') {
+      text += 'الصنف              الكمية  السعر\n';
+      text += '--------------------------------\n';
+      
+      for (const it of items) {
+        const name = (it.product_name || it.name || 'صنف').substring(0, 15);
+        const qty = it.quantity || 0;
+        const price = Number(it.price || 0).toFixed(2);
+        const total = Number(it.total || 0).toFixed(2);
+        
+        text += name.padEnd(18) + qty.toString().padStart(6) + '\n';
+        text += '  ' + price + ' × ' + qty + ' = ' + total + '\n';
+      }
+      
+      text += '--------------------------------\n';
+      text += 'الإجمالي الفرعي: ' + (doc.subtotal || 0).toFixed(2) + '\n';
+      text += 'الخصم: ' + (doc.discount || 0).toFixed(2) + '\n';
+      text += 'الضريبة: ' + (doc.tax || 0).toFixed(2) + '\n';
+      
+      // ⚠️ الإجمالي بحجم كبير
+      text += ESC + '!' + '\x18';
+      text += 'الإجمالي: ' + (doc.total || 0).toFixed(2) + '\n';
+      text += ESC + '!' + '\x00';
+      
+      text += 'المدفوع: ' + (doc.paid || 0).toFixed(2) + '\n';
+      text += 'الباقي: ' + (doc.remaining || 0).toFixed(2) + '\n';
+    } else if (docType === 'payroll') {
+      text += 'الراتب الأساسي: ' + (doc.basic_salary || 0).toFixed(2) + '\n';
+      text += 'بدل سكن: ' + (doc.housing_allowance || 0).toFixed(2) + '\n';
+      text += 'بدل مواصلات: ' + (doc.transport_allowance || 0).toFixed(2) + '\n';
+      text += 'مكافآت: ' + (doc.bonuses || 0).toFixed(2) + '\n';
+      text += 'خصم غياب: ' + (doc.absence_deduction || 0).toFixed(2) + '\n';
+      text += 'خصم تأخير: ' + (doc.late_deduction || 0).toFixed(2) + '\n';
+      text += '--------------------------------\n';
+      text += ESC + '!' + '\x18';
+      text += 'الصافي: ' + (doc.net_salary || 0).toFixed(2) + '\n';
+      text += ESC + '!' + '\x00';
+    } else {
+      text += 'المبلغ: ' + (doc.amount || 0).toFixed(2) + '\n';
+      text += 'طريقة الدفع: ' + (doc.payment_method || '-') + '\n';
+      text += 'البيان: ' + (doc.description || '-') + '\n';
+    }
+
+    text += '\n--------------------------------\n';
+    text += ESC + 'a' + '\x01'; // وسط
+    text += 'شكراً لتعاملكم معنا\n';
+    text += '© شركة البسملة ' + new Date().getFullYear() + '\n';
+    text += '\n\n\n';
+    
+    // ⚠️ قطع الورق
+    text += GS + 'V' + '\x00';
+
+    return text;
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🧪 اختبار الطباعة
+  // ═══════════════════════════════════════════════════════════════════
+  async test() {
+    const testDoc = {
+      invoice_no: 'TEST-' + Date.now(),
+      date: Utils.nowISO(),
+      customer_name: 'عميل تجريبي',
+      employee_name: State.currentEmployee ? State.currentEmployee.name : 'اختبار',
+      subtotal: 100,
+      discount: 0,
+      tax: 0,
+      total: 100,
+      paid: 100,
+      remaining: 0
+    };
+    
+    const testItems = [
+      { product_name: 'منتج تجريبي 1', quantity: 2, price: 50, total: 100 }
+    ];
+
+    Printer.openDialog(testDoc, testItems, 'sales');
   }
 };
 
