@@ -3489,6 +3489,9 @@ const Auth = {
    - skipAutoLoad لمنع التدخل أثناء عرض معرّف الشركة
    - مسح cache عند logout
    - debounce على refreshCurrentPage
+   - setTimeout في openPage لضمان ظهور الصفحات
+   - دمج بدل استبدال في startDataListeners
+   - دوال toggleSideMenu / closeSideMenu / renderSideMenu
    ═══════════════════════════════════════════════════════════════════ */
 const App = {
   _loadingCompany: false,
@@ -3523,7 +3526,6 @@ const App = {
     FBAuth.onAuthStateChanged(async function (user) {
       App.hideLoading();
 
-      // ⚠️ [إصلاح] لو لسه في شاشة عرض معرّف الشركة، اخرج
       if (App._skipAutoLoad) {
         console.log('⏭️ Skipping auto-load (company just created)');
         State.currentUser = user;
@@ -3719,7 +3721,7 @@ const App = {
   },
 
   // ═══════════════════════════════════════════════════════════════════
-  // 8) startDataListeners — [معدّلة] بـ debounce
+  // 8) startDataListeners — [معدّلة] دمج بدل استبدال
   // ═══════════════════════════════════════════════════════════════════
   startDataListeners() {
     App.stopAllListeners();
@@ -3770,7 +3772,16 @@ const App = {
             return;
           }
 
-          cache[k] = Object.values(merged);
+          // ⚠️ [إصلاح] دمج بدل استبدال — نحتفظ بالبيانات المحلية
+          const localItems = cache[k] || [];
+          const localMap = {};
+          localItems.forEach(function (item) {
+            if (item && item.id) localMap[item.id] = item;
+          });
+          serverData.forEach(function (item) {
+            if (item && item.id) localMap[item.id] = item;
+          });
+          cache[k] = Object.values(localMap);
           App.saveCacheToLocal(k, cache[k]);
           App.refreshCurrentPage();
         };
@@ -3779,7 +3790,7 @@ const App = {
       })(key);
     }
 
-    // ⚠️ [إصلاح] debounce على refreshCurrentPage لمنع re-render المكثف
+    // ⚠️ debounce على refreshCurrentPage
     let refreshTimer = null;
     if (!App._originalRefresh) App._originalRefresh = App.refreshCurrentPage;
     const originalCallback = App._originalRefresh;
@@ -3795,7 +3806,7 @@ const App = {
   },
 
   // ═══════════════════════════════════════════════════════════════════
-  // 9) stopAllListeners — [معدّلة] بإرجاع refreshCurrentPage
+  // 9) stopAllListeners
   // ═══════════════════════════════════════════════════════════════════
   stopAllListeners() {
     State.listeners.forEach(function (l) {
@@ -3810,7 +3821,7 @@ const App = {
   },
 
   // ═══════════════════════════════════════════════════════════════════
-  // 10) refreshCurrentPage
+  // 10) refreshCurrentPage — [معدّلة] بدون شرط hidden
   // ═══════════════════════════════════════════════════════════════════
   refreshCurrentPage() {
     if (!State.currentEmployee) return;
@@ -3822,7 +3833,10 @@ const App = {
         catch (e) { console.warn('refresh[' + name + '] error:', e); }
       };
 
-      if (page === 'home') safe('Dashboard', Dashboard.render);
+      if (page === 'home') {
+        safe('Dashboard', Dashboard.render);
+        safe('Menu', Menu.render);
+      }
       else if (page === 'attendance') safe('Attendance', Attendance.renderMark);
       else if (page === 'employees') safe('Employees', Employees.render);
       else if (page === 'hr') safe('HR', HR.render);
@@ -3867,7 +3881,7 @@ const App = {
   },
 
   // ═══════════════════════════════════════════════════════════════════
-  // 13) openPage
+  // 13) openPage — [معدّلة] بـ setTimeout لضمان ظهور الصفحة
   // ═══════════════════════════════════════════════════════════════════
   openPage(page) {
     const permMap = {
@@ -3896,45 +3910,55 @@ const App = {
 
     document.querySelectorAll('.bottom-nav .nav-btn').forEach(function (b) { b.classList.remove('active'); });
 
-    if (page === 'home') Dashboard.render();
-    else if (page === 'attendance') Attendance.init();
-    else if (page === 'employees') Employees.render();
-    else if (page === 'hr') HR.init();
-    else if (page === 'products') Products.render();
-    else if (page === 'partners') Partners.render();
-    else if (page === 'sales') {
-      if (!State._initialized.sales || previousPage !== 'sales') {
-        Sales.init();
-        State._initialized.sales = true;
-      } else Sales.render();
-    }
-    else if (page === 'purchase') {
-      if (!State._initialized.purchase || previousPage !== 'purchase') {
-        Purchases.init();
-        State._initialized.purchase = true;
-      } else Purchases.render();
-    }
-    else if (page === 'returns') {
-      if (!State._initialized.returns || previousPage !== 'returns') {
-        Returns.init();
-        State._initialized.returns = true;
-      } else Returns.render();
-    }
-    else if (page === 'invoices') Invoices.render();
-    else if (page === 'vouchers') Vouchers.render();
-    else if (page === 'cash') Cash.render();
-    else if (page === 'payroll') Payroll.init();
-    else if (page === 'expenses') Expenses.render();
-    else if (page === 'reports') Reports.init();
-    else if (page === 'statements') Statements.init();
-    else if (page === 'policies') Policies.render();
-    else if (page === 'whatsapp') WhatsApp.render();
-    else if (page === 'activity') Activity.render();
-    else if (page === 'devices') Devices.render();
-    else if (page === 'requests') Requests.render();
-    else if (page === 'geofence') Geofence.render();
-    else if (page === 'settings') Settings.render();
-    window.scrollTo(0, 0);
+    // ⚠️ [إصلاح] setTimeout عشان نضمن إن الـ DOM عمل reflow بعد إظهار الصفحة
+    setTimeout(function () {
+      try {
+        if (page === 'home') {
+          Dashboard.render();
+          Menu.render();
+        }
+        else if (page === 'attendance') Attendance.init();
+        else if (page === 'employees') Employees.render();
+        else if (page === 'hr') HR.init();
+        else if (page === 'products') Products.render();
+        else if (page === 'partners') Partners.render();
+        else if (page === 'sales') {
+          if (!State._initialized.sales || previousPage !== 'sales') {
+            Sales.init();
+            State._initialized.sales = true;
+          } else Sales.render();
+        }
+        else if (page === 'purchase') {
+          if (!State._initialized.purchase || previousPage !== 'purchase') {
+            Purchases.init();
+            State._initialized.purchase = true;
+          } else Purchases.render();
+        }
+        else if (page === 'returns') {
+          if (!State._initialized.returns || previousPage !== 'returns') {
+            Returns.init();
+            State._initialized.returns = true;
+          } else Returns.render();
+        }
+        else if (page === 'invoices') Invoices.render();
+        else if (page === 'vouchers') Vouchers.render();
+        else if (page === 'cash') Cash.render();
+        else if (page === 'payroll') Payroll.init();
+        else if (page === 'expenses') Expenses.render();
+        else if (page === 'reports') Reports.init();
+        else if (page === 'statements') Statements.init();
+        else if (page === 'policies') Policies.render();
+        else if (page === 'whatsapp') WhatsApp.render();
+        else if (page === 'activity') Activity.render();
+        else if (page === 'devices') Devices.render();
+        else if (page === 'requests') Requests.render();
+        else if (page === 'geofence') Geofence.render();
+        else if (page === 'settings') Settings.render();
+      } catch (e) {
+        console.warn('Render error for page: ' + page, e);
+      }
+      window.scrollTo(0, 0);
+    }, 50);
   },
 
   // ═══════════════════════════════════════════════════════════════════
@@ -3979,6 +4003,83 @@ const App = {
   },
 
   // ═══════════════════════════════════════════════════════════════════
+  // 17.1) toggleSideMenu — [جديد]
+  // ═══════════════════════════════════════════════════════════════════
+  toggleSideMenu() {
+    try {
+      const menu = document.getElementById('sideMenu');
+      const overlay = document.getElementById('sideMenuOverlay');
+      if (!menu) return;
+      const isOpen = menu.classList.contains('open');
+      if (isOpen) {
+        App.closeSideMenu();
+      } else {
+        App.renderSideMenu();
+        menu.classList.add('open');
+        if (overlay) overlay.classList.add('open');
+      }
+    } catch (e) { console.warn('toggleSideMenu error:', e); }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 17.2) closeSideMenu — [جديد]
+  // ═══════════════════════════════════════════════════════════════════
+  closeSideMenu() {
+    try {
+      const menu = document.getElementById('sideMenu');
+      const overlay = document.getElementById('sideMenuOverlay');
+      if (menu) menu.classList.remove('open');
+      if (overlay) overlay.classList.remove('open');
+    } catch (e) {}
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 17.3) renderSideMenu — [جديد]
+  // ═══════════════════════════════════════════════════════════════════
+  renderSideMenu() {
+    const el = document.getElementById('sideMenuContent');
+    if (!el) return;
+
+    const items = [
+      { page: 'home', icon: '🏠', title: 'الرئيسية', perm: 'attendance_report' },
+      { page: 'attendance', icon: '👆', title: 'الحضور والانصراف', perm: 'attendance_report' },
+      { page: 'hr', icon: '📋', title: 'الموارد البشرية', perm: 'hr_view' },
+      { page: 'employees', icon: '👥', title: 'الموظفون', perm: 'employees_view' },
+      { page: 'products', icon: '📦', title: 'المنتجات والمخزون', perm: 'products_view' },
+      { page: 'partners', icon: '🤝', title: 'العملاء والموردون', perm: 'partners_view' },
+      { page: 'sales', icon: '🛒', title: 'فاتورة مبيعات', perm: 'sales_create' },
+      { page: 'purchase', icon: '🚚', title: 'فاتورة مشتريات', perm: 'purchase_create' },
+      { page: 'returns', icon: '↩️', title: 'المرتجعات', perm: 'returns_create' },
+      { page: 'invoices', icon: '📋', title: 'الفواتير', perm: 'reports_view' },
+      { page: 'vouchers', icon: '🧾', title: 'سندات القبض والدفع', perm: 'vouchers_create' },
+      { page: 'cash', icon: '💰', title: 'حركة الخزينة', perm: 'cash_view' },
+      { page: 'payroll', icon: '💵', title: 'المرتبات', perm: 'payroll_generate' },
+      { page: 'expenses', icon: '💸', title: 'الإيرادات والمصروفات', perm: 'expenses_add' },
+      { page: 'reports', icon: '📊', title: 'التقارير', perm: 'reports_view' },
+      { page: 'statements', icon: '📑', title: 'كشوف الحسابات', perm: 'statements_view' },
+      { page: 'policies', icon: '📖', title: 'لائحة العمل', perm: 'attendance_report' },
+      { page: 'whatsapp', icon: '💬', title: 'واتساب الشركة', perm: 'partners_view' },
+      { page: 'settings', icon: '⚙️', title: 'الإعدادات', perm: 'attendance_report' }
+    ];
+
+    if (can('activity_view')) items.push({ page: 'activity', icon: '📜', title: 'سجل النشاطات', perm: 'activity_view' });
+    if (can('devices_manage')) items.push({ page: 'devices', icon: '📱', title: 'إدارة الأجهزة', perm: 'devices_manage' });
+    if (can('requests_manage')) items.push({ page: 'requests', icon: '📩', title: 'طلبات الانضمام', perm: 'requests_manage' });
+    if (can('geofence_manage')) items.push({ page: 'geofence', icon: '📍', title: 'نطاق الحضور', perm: 'geofence_manage' });
+
+    let html = '';
+    for (const it of items) {
+      if (can(it.perm)) {
+        html += '<div class="side-menu-item" onclick="App.closeSideMenu();App.openPage(\'' + it.page + '\')">' +
+          '<span class="sm-icon">' + it.icon + '</span>' +
+          '<span>' + it.title + '</span>' +
+        '</div>';
+      }
+    }
+    el.innerHTML = html;
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
   // 18) watchDeviceApproval
   // ═══════════════════════════════════════════════════════════════════
   watchDeviceApproval() {
@@ -4013,7 +4114,7 @@ const App = {
   },
 
   // ═══════════════════════════════════════════════════════════════════
-  // 20) safeLogout — [معدّلة] بمسح cache كامل
+  // 20) safeLogout — مسح cache كامل
   // ═══════════════════════════════════════════════════════════════════
   async safeLogout(reason) {
     console.log('🔓 Safe logout triggered:', reason || 'unspecified');
@@ -4052,7 +4153,6 @@ const App = {
 
       try { localStorage.removeItem('company_id'); } catch (e) {}
 
-      // ⚠️ [إصلاح أمني] مسح كل cache الشركة الحالية
       try {
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
