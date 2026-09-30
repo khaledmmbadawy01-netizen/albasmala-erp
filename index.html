@@ -2727,24 +2727,59 @@ body::after {
        💰 صفحة الخزينة
        ═══════════════════════════════════════════════════════════════ -->
   <div id="page-cash" class="page hidden">
-    <div class="stats-grid" id="cashStats"></div>
-    <div class="card">
-      <h3>💡 ملاحظة مهمة</h3>
-      <p style="font-size:13px;line-height:1.7;color:var(--text-2);">
-        حركة الخزينة الفعلية تتأثر فقط بـ
-        <strong style="color:var(--gold);">سندات القبض والدفع</strong>.
-        <br><br>
-        الرواتب والسلف والمكافآت تظهر في كشوف الموظفين، لكنها لا تُخصم من الخزينة إلا بسند صرف.
-      </p>
-      <button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="App.openPage('vouchers')">🧾 إنشاء سند</button>
-    </div>
-    <div class="search-bar">
-      <span>📅</span>
-      <input type="date" id="cashFrom">
-      <input type="date" id="cashTo">
-      <button class="btn btn-primary btn-sm" onclick="Cash.load()">عرض</button>
-    </div>
-    <div id="cashList"></div>
+  <!-- ⚠️ الإحصائيات -->
+  <div class="stats-grid" id="cashStats"></div>
+
+  <!-- ⚠️ ملاحظة -->
+  <div class="card">
+    <h3>💡 ملاحظة مهمة</h3>
+    <p style="font-size:13px;line-height:1.7;color:var(--text-2);">
+      حركة الخزينة الفعلية تتأثر فقط بـ
+      <strong style="color:var(--gold);">سندات القبض والدفع</strong>.
+      <br><br>
+      الرواتب والسلف والمكافآت تظهر في كشوف الموظفين، لكنها لا تُخصم من الخزينة إلا بسند صرف.
+    </p>
+    <button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="App.openPage('vouchers')">🧾 إنشاء سند</button>
+  </div>
+
+  <!-- ⚠️ البحث -->
+  <div class="search-bar">
+    <span>🔍</span>
+    <input type="text" id="cashSearch" placeholder="ابحث في الوصف أو المرجع..." oninput="Cash.search(this.value)">
+  </div>
+
+  <!-- ⚠️ فلتر النوع -->
+  <div style="padding:0 12px;margin-bottom:8px;display:flex;gap:6px;overflow-x:auto;" id="cashTypeFilter">
+    <button class="btn btn-sm btn-primary filter-btn active" data-type="all" onclick="Cash.setTypeFilter('all')">📋 الكل</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-type="in" onclick="Cash.setTypeFilter('in')">↓ وارد</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-type="out" onclick="Cash.setTypeFilter('out')">↑ صادر</button>
+  </div>
+
+  <!-- ⚠️ فلتر المصدر -->
+  <div style="padding:0 12px;margin-bottom:8px;display:flex;gap:6px;overflow-x:auto;" id="cashSourceFilter">
+    <button class="btn btn-sm btn-primary filter-btn active" data-source="all" onclick="Cash.setSourceFilter('all')">🔍 كل المصادر</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-source="invoice" onclick="Cash.setSourceFilter('invoice')">🛒 فواتير</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-source="voucher" onclick="Cash.setSourceFilter('voucher')">🧾 سندات</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-source="salary" onclick="Cash.setSourceFilter('salary')">💵 مرتبات</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-source="return" onclick="Cash.setSourceFilter('return')">↩️ مرتجعات</button>
+  </div>
+
+  <!-- ⚠️ فلتر التاريخ والحساب -->
+  <div class="search-bar" style="flex-wrap:wrap;">
+    <span>📅</span>
+    <input type="date" id="cashFrom" style="flex:1;min-width:110px;" onchange="Cash.render()">
+    <input type="date" id="cashTo" style="flex:1;min-width:110px;" onchange="Cash.render()">
+  </div>
+  <div class="search-bar">
+    <span>💼</span>
+    <select id="cashAccountFilter" style="flex:1;background:transparent;border:none;color:var(--text);font-size:15px;outline:none;" onchange="Cash.render()">
+      <option value="all">كل الحسابات</option>
+    </select>
+    <button class="btn btn-outline btn-sm" onclick="Cash.resetFilters()">🔄</button>
+  </div>
+
+  <!-- ⚠️ قائمة الحركات -->
+  <div id="cashList"></div>
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
