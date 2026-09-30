@@ -6129,76 +6129,244 @@ async save() {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
-   31. Invoices
+   31. Invoices — الفواتير مع فلاتر متقدمة وسجل السداد
    ═══════════════════════════════════════════════════════════════════ */
 const Invoices = {
+  // ⚠️ الفلاتر الحالية
+  _filters: {
+    search: '',
+    status: 'all', // all | paid | partial | unpaid
+    from: '',
+    to: ''
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔄 التبويبات
+  // ═══════════════════════════════════════════════════════════════════
   switchTab(e, tab) {
     State.currentInvTab = tab;
     document.querySelectorAll('#page-invoices .tab').forEach(function (t) { t.classList.remove('active'); });
     if (e && e.target) e.target.classList.add('active');
+
+    // ⚠️ إعادة تعيين الفلاتر عند التبديل
+    Invoices._filters = { search: '', status: 'all', from: '', to: '' };
+    const searchEl = document.getElementById('invSearch');
+    if (searchEl) searchEl.value = '';
+
     Invoices.render();
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔍 الفلترة
+  // ═══════════════════════════════════════════════════════════════════
+  setStatusFilter(status) {
+    Invoices._filters.status = status;
+    document.querySelectorAll('#invStatusFilter .filter-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.status === status);
+    });
+    Invoices.render();
+  },
+
+  setDateFilter(from, to) {
+    Invoices._filters.from = from || '';
+    Invoices._filters.to = to || '';
+    Invoices.render();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📊 عرض قائمة الفواتير (محسّن)
+  // ═══════════════════════════════════════════════════════════════════
   render: Utils.debounce(function () {
     const searchEl = document.getElementById('invSearch');
     const search = searchEl ? searchEl.value.trim() : '';
+    Invoices._filters.search = search;
+
     const store = State.currentInvTab === 'sales' ? 'sales_invoices' : 'purchase_invoices';
     let invs = (cache[store] || []).slice();
-    if (search) invs = invs.filter(function (i) { return (i.invoice_no || '').includes(search); });
-    invs.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
 
+    // ⚠️ فلتر البحث
+    if (search) {
+      invs = invs.filter(function (i) {
+        const partyName = State.currentInvTab === 'sales' ? i.customer_name : i.supplier_name;
+        return (i.invoice_no || '').includes(search) ||
+               (partyName || '').includes(search);
+      });
+    }
+
+    // ⚠️ فلتر الحالة
+    const statusFilter = Invoices._filters.status;
+    if (statusFilter !== 'all') {
+      invs = invs.filter(function (i) {
+        const remaining = Number(i.remaining) || 0;
+        const paid = Number(i.paid) || 0;
+        const total = Number(i.total) || 0;
+
+        if (statusFilter === 'paid') return remaining <= 0;
+        if (statusFilter === 'unpaid') return paid <= 0 && remaining > 0;
+        if (statusFilter === 'partial') return paid > 0 && remaining > 0;
+        return true;
+      });
+    }
+
+    // ⚠️ فلتر التاريخ
+    const from = Invoices._filters.from;
+    const to = Invoices._filters.to;
+    if (from && to) {
+      invs = invs.filter(function (i) {
+        const d = (i.date || i.created_at || '').split('T')[0];
+        return d >= from && d <= to;
+      });
+    }
+
+    // ⚠️ ترتيب
+    invs.sort(function (a, b) {
+      return (b.created_at || '').localeCompare(a.created_at || '');
+    });
+
+    // ⚠️ الإحصائيات
+    const stats = {
+      total: invs.length,
+      paid: invs.filter(function (i) { return (Number(i.remaining) || 0) <= 0; }).length,
+      unpaid: invs.filter(function (i) { return (Number(i.paid) || 0) <= 0 && (Number(i.remaining) || 0) > 0; }).length,
+      partial: invs.filter(function (i) { return (Number(i.paid) || 0) > 0 && (Number(i.remaining) || 0) > 0; }).length,
+      totalAmount: invs.reduce(function (s, i) { return s + (Number(i.total) || 0); }, 0),
+      paidAmount: invs.reduce(function (s, i) { return s + (Number(i.paid) || 0); }, 0),
+      remainingAmount: invs.reduce(function (s, i) { return s + (Number(i.remaining) || 0); }, 0)
+    };
+
+    // ⚠️ عرض الإحصائيات
+    const statsEl = document.getElementById('invStats');
+    if (statsEl) {
+      statsEl.innerHTML =
+        '<div class="stat-card blue"><div class="label">إجمالي الفواتير</div><div class="value">' + stats.total + '</div></div>' +
+        '<div class="stat-card green"><div class="label">مدفوعة</div><div class="value">' + stats.paid + '</div></div>' +
+        '<div class="stat-card orange"><div class="label">جزئي</div><div class="value">' + stats.partial + '</div></div>' +
+        '<div class="stat-card red"><div class="label">آجلة</div><div class="value">' + stats.unpaid + '</div></div>' +
+        '<div class="stat-card green" style="grid-column:span 2;"><div class="label">إجمالي المبالغ</div><div class="value" style="font-size:20px;">' + Utils.fmtNum(stats.totalAmount) + '</div></div>' +
+        '<div class="stat-card"><div class="label">المدفوع</div><div class="value" style="font-size:18px;">' + Utils.fmtNum(stats.paidAmount) + '</div></div>' +
+        '<div class="stat-card red"><div class="label">المتبقي</div><div class="value" style="font-size:18px;">' + Utils.fmtNum(stats.remainingAmount) + '</div></div>';
+    }
+
+    // ⚠️ عرض القائمة
     const el = document.getElementById('invList');
     if (!el) return;
+
     if (invs.length === 0) {
       el.innerHTML = '<div class="empty"><div class="ico">📋</div>لا توجد فواتير</div>';
       return;
     }
+
     let html = '';
     for (const inv of invs) {
       const pName = State.currentInvTab === 'sales' ? inv.customer_name : inv.supplier_name;
-      const hasRemaining = (Number(inv.remaining) || 0) > 0;
+      const remaining = Number(inv.remaining) || 0;
+      const paid = Number(inv.paid) || 0;
+      const total = Number(inv.total) || 0;
+      const hasRemaining = remaining > 0;
+
+      // ⚠️ تحديد الحالة
+      let statusBadge = '';
+      if (remaining <= 0) {
+        statusBadge = '<span class="badge badge-green">✓ مدفوعة</span>';
+      } else if (paid <= 0) {
+        statusBadge = '<span class="badge badge-red">⚠️ آجلة</span>';
+      } else {
+        statusBadge = '<span class="badge badge-orange">⏳ جزئي</span>';
+      }
+
+      // ⚠️ حساب النسبة المدفوعة
+      const paidPercent = total > 0 ? Math.round((paid / total) * 100) : 0;
+
       html += '<div class="list-item" onclick="Invoices.show(\'' + inv.id + '\',\'' + State.currentInvTab + '\')">' +
         '<div class="info">' +
-          '<h4>' + Utils.esc(inv.invoice_no) + '</h4>' +
-          '<p>' + Utils.esc(pName || '-') + '</p>' +
-          '<p style="font-size:11px;">' + Utils.fmtDate(inv.date) + '</p>' +
-        '</div>' +
-        '<div style="text-align:left;">' +
-          '<div style="font-weight:700;color:var(--gold);">' + Utils.fmtMoney(inv.total) + '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+            '<h4 style="margin:0;">' + Utils.esc(inv.invoice_no) + '</h4>' +
+            statusBadge +
+          '</div>' +
+          '<p>👤 ' + Utils.esc(pName || '-') + '</p>' +
+          '<p style="font-size:11px;">📅 ' + Utils.fmtDate(inv.date) + '</p>' +
           (hasRemaining
-            ? '<div style="font-size:11px;color:var(--red-2);">باقي: ' + Utils.fmtMoney(inv.remaining) + '</div>' +
-              '<button class="btn btn-warning btn-sm" style="margin-top:4px;" onclick="event.stopPropagation();Invoices.pay(\'' + inv.id + '\',\'' + State.currentInvTab + '\')">سداد</button>'
-            : '<div style="font-size:11px;color:var(--green-2);">مسددة ✓</div>') +
-        '</div></div>';
+            ? '<div style="margin-top:6px;background:#222;height:4px;border-radius:2px;overflow:hidden;">' +
+                '<div style="height:100%;background:var(--green-2);width:' + paidPercent + '%;"></div>' +
+              '</div>' +
+              '<p style="font-size:10px;color:var(--text-2);margin-top:2px;">' + paidPercent + '% مدفوع</p>'
+            : '') +
+        '</div>' +
+        '<div style="text-align:left;min-width:110px;">' +
+          '<div style="font-weight:800;color:var(--gold);font-size:16px;">' + Utils.fmtMoney(total) + '</div>' +
+          (hasRemaining
+            ? '<div style="font-size:11px;color:var(--red-2);">باقي: ' + Utils.fmtMoney(remaining) + '</div>' +
+              '<button class="btn btn-warning btn-sm" style="margin-top:6px;width:100%;" onclick="event.stopPropagation();Invoices.pay(\'' + inv.id + '\',\'' + State.currentInvTab + '\')">💳 سداد</button>'
+            : '<div style="font-size:11px;color:var(--green-2);">✓ مكتملة</div>') +
+        '</div>' +
+      '</div>';
     }
     el.innerHTML = html;
   }, 250),
 
   load() { Invoices.render(); },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 📄 عرض تفاصيل الفاتورة (محسّن)
+  // ═══════════════════════════════════════════════════════════════════
   async show(id, type) {
     const storeMap = { sales: 'sales_invoices', purchase: 'purchase_invoices', sales_return: 'sales_returns', purchase_return: 'purchase_returns' };
     const itemsMap = { sales: 'sales_items', purchase: 'purchase_items', sales_return: 'sales_return_items', purchase_return: 'purchase_return_items' };
+
     const store = storeMap[type];
     const itemsStore = itemsMap[type];
     if (!store) return;
-    const doc = (cache[store] || []).find(function (x) { return x.id === id; });
-    if (!doc) return;
-    const items = (cache[itemsStore] || []).filter(function (i) { return (i.invoice_id === id || i.return_id === id); });
 
-    const titles = { sales: '🧾 فاتورة مبيعات', purchase: '📦 فاتورة مشتريات', sales_return: '↩️ مرتجع مبيعات', purchase_return: '↩️ مرتجع مشتريات' };
+    const doc = (cache[store] || []).find(function (x) { return x.id === id; });
+    if (!doc) {
+      Toast.show('❌ الفاتورة غير موجودة', 'error');
+      return;
+    }
+
+    const items = (cache[itemsStore] || []).filter(function (i) {
+      return (i.invoice_id === id || i.return_id === id);
+    });
+
+    const titles = {
+      sales: '🧾 فاتورة مبيعات', purchase: '📦 فاتورة مشتريات',
+      sales_return: '↩️ مرتجع مبيعات', purchase_return: '↩️ مرتجع مشتريات'
+    };
     const partyLabel = (type === 'sales' || type === 'sales_return') ? 'العميل' : 'المورد';
     const partyName = doc.customer_name || doc.supplier_name || doc.party_name || '-';
     const docNo = doc.invoice_no || doc.return_no;
+    const isInvoice = (type === 'sales' || type === 'purchase');
 
-    let html = '<div class="receipt" id="printableReceipt">' +
-      '<div class="header"><h2>🏪 شركة البسملة</h2><p>لتجارة المشغولات الصينية</p><p>' + titles[type] + '</p></div>' +
+    // ⚠️ جلب السندات المرتبطة (لو الفاتورة)
+    const relatedVouchers = isInvoice
+      ? (cache.vouchers || []).filter(function (v) {
+          return v.invoice_id === id || v.reference === docNo;
+        })
+      : [];
+
+    // ⚠️ حساب النسبة المدفوعة
+    const total = Number(doc.total) || 0;
+    const paid = Number(doc.paid) || 0;
+    const remaining = Number(doc.remaining) || 0;
+    const paidPercent = total > 0 ? Math.round((paid / total) * 100) : 0;
+
+    let html = '';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📄 الفاتورة نفسها
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="receipt" id="printableReceipt">' +
+      '<div class="header">' +
+        '<h2>🏪 شركة البسملة</h2>' +
+        '<p>لتجارة المشغولات الصينية</p>' +
+        '<p>' + titles[type] + '</p>' +
+      '</div>' +
       '<div class="line"><span>رقم:</span><span>' + Utils.esc(docNo) + '</span></div>' +
       '<div class="line"><span>التاريخ:</span><span>' + Utils.fmtDate(doc.date) + '</span></div>' +
       '<div class="line"><span>' + partyLabel + ':</span><span>' + Utils.esc(partyName) + '</span></div>' +
       '<div class="line"><span>الموظف:</span><span>' + Utils.esc(doc.employee_name || '-') + '</span></div>' +
       '<hr style="margin:10px 0;border:none;border-top:1px dashed #000;">' +
       '<div class="items">';
+
     for (const it of items) {
       const product = (cache.products || []).find(function (x) { return x.id === it.product_id; });
       const imgTag = product && product.image
@@ -6211,110 +6379,202 @@ const Invoices = {
     }
     html += '</div>';
 
-    if (type === 'sales' || type === 'purchase') {
+    if (isInvoice) {
       html += '<hr style="margin:10px 0;border:none;border-top:1px dashed #000;">' +
         '<div class="line"><span>الإجمالي الفرعي:</span><span>' + Utils.fmtMoney(doc.subtotal) + '</span></div>' +
         '<div class="line"><span>الخصم:</span><span>' + Utils.fmtMoney(doc.discount) + '</span></div>' +
         '<div class="line"><span>الضريبة:</span><span>' + Utils.fmtMoney(doc.tax) + '</span></div>';
     }
-    html += '<div class="line total"><span>الإجمالي:</span><span>' + Utils.fmtMoney(doc.total) + '</span></div>';
-    if (type === 'sales' || type === 'purchase') {
-      html += '<div class="line"><span>المدفوع:</span><span>' + Utils.fmtMoney(doc.paid) + '</span></div>' +
-        '<div class="line"><span>الباقي:</span><span>' + Utils.fmtMoney(doc.remaining) + '</span></div>';
+
+    html += '<div class="line total"><span>الإجمالي:</span><span>' + Utils.fmtMoney(total) + '</span></div>';
+
+    if (isInvoice) {
+      html += '<div class="line"><span>المدفوع:</span><span style="color:#0a0;">' + Utils.fmtMoney(paid) + '</span></div>' +
+        '<div class="line"><span>الباقي:</span><span style="color:#c00;">' + Utils.fmtMoney(remaining) + '</span></div>';
     }
-    html += '<div style="text-align:center;margin-top:15px;font-size:11px;border-top:1px dashed #000;padding-top:10px;">شكراً لتعاملكم معنا<br>© البسملة 2026</div></div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;">' +
+
+    html += '<div style="text-align:center;margin-top:15px;font-size:11px;border-top:1px dashed #000;padding-top:10px;">' +
+      'شكراً لتعاملكم معنا<br>© البسملة ' + new Date().getFullYear() +
+    '</div></div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📊 شريط التقدم (لو فيها باقي)
+    // ═══════════════════════════════════════════════════════════════
+    if (isInvoice && remaining > 0 && paid > 0) {
+      html += '<div class="card" style="margin-top:12px;">' +
+        '<h3>📊 حالة السداد</h3>' +
+        '<div style="background:#222;height:12px;border-radius:6px;overflow:hidden;margin-bottom:8px;">' +
+          '<div style="height:100%;background:linear-gradient(90deg,var(--green-2),var(--gold));width:' + paidPercent + '%;"></div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:12px;">' +
+          '<span style="color:var(--green-2);">مدفوع: ' + Utils.fmtMoney(paid) + ' (' + paidPercent + '%)</span>' +
+          '<span style="color:var(--red-2);">باقي: ' + Utils.fmtMoney(remaining) + '</span>' +
+        '</div>' +
+      '</div>';
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📜 سجل السندات المرتبطة
+    // ═══════════════════════════════════════════════════════════════
+    if (relatedVouchers.length > 0) {
+      html += '<div class="card" style="margin-top:12px;">' +
+        '<h3>📜 سجل السداد (' + relatedVouchers.length + ')</h3>';
+      relatedVouchers.sort(function (a, b) {
+        return (b.date || '').localeCompare(a.date || '');
+      });
+      for (const v of relatedVouchers) {
+        html += '<div style="padding:8px 0;border-bottom:1px solid #222;">' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
+            '<strong style="color:var(--blue-2);font-size:13px;">' + (v.type === 'receipt' ? '🧾 سند قبض' : '🧾 سند دفع') + '</strong>' +
+            '<span style="font-weight:700;color:var(--gold);">' + Utils.fmtMoney(v.amount) + '</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:#888;">' + Utils.esc(v.voucher_no) + ' | ' + Utils.fmtDate(v.date) + '</div>' +
+          (v.payment_method ? '<div style="font-size:11px;color:#888;">💳 ' + Utils.esc(v.payment_method) + '</div>' : '') +
+        '</div>';
+      }
+      html += '</div>';
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📤 أزرار العمليات
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card" style="margin-top:12px;">' +
+      '<h3>⚙️ العمليات</h3>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
         '<button class="btn btn-primary" onclick="Invoices.openExport(\'' + id + '\',\'' + type + '\')">📤 تصدير</button>' +
-        '<button class="btn btn-info" onclick="Modal.close();Printer.openDialog((cache[\'' + store + '\'] || []).find(x=>x.id===\'' + id + '\'), (cache[\'' + itemsStore + '\'] || []).filter(i=>i.invoice_id===\'' + id + '\' || i.return_id===\'' + id + '\'), \'' + type + '\')">🖨️ طباعة</button>' +
+        '<button class="btn btn-info" onclick="Invoices.openPrintDialog(\'' + id + '\',\'' + type + '\')">🖨️ طباعة</button>' +
         '<button class="btn btn-success" onclick="Invoices.share(\'' + id + '\',\'' + type + '\')">📱 مشاركة</button>' +
         '<button class="btn btn-warning" onclick="Invoices.saveToPhone(\'' + id + '\',\'' + type + '\')">💾 حفظ</button>' +
-      '</div>';
-    if ((type === 'sales' || type === 'purchase') && Number(doc.remaining) > 0 && can('vouchers_create')) {
-      html += '<button class="btn btn-warning btn-full" style="margin-top:8px;" onclick="Modal.close();Invoices.pay(\'' + doc.id + '\',\'' + type + '\')">💳 سداد جزء أو الكل</button>';
+      '</div>' +
+    '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 💳 زر سداد سريع
+    // ═══════════════════════════════════════════════════════════════
+    if (isInvoice && remaining > 0 && can('vouchers_create')) {
+      html += '<button class="btn btn-warning btn-full" style="margin-top:12px;" onclick="Modal.close();Invoices.pay(\'' + doc.id + '\',\'' + type + '\')">💳 سداد جزء أو الكل (' + Utils.fmtMoney(remaining) + ')</button>';
     }
-    Modal.open('تفاصيل المستند', html, null, 'إغلاق');
+
+    Modal.open('📄 تفاصيل المستند', html, null, 'إغلاق');
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 🖨️ فتح مودال الطباعة
+  // ═══════════════════════════════════════════════════════════════════
+  openPrintDialog(id, type) {
+    const storeMap = { sales: 'sales_invoices', purchase: 'purchase_invoices', sales_return: 'sales_returns', purchase_return: 'purchase_returns' };
+    const itemsMap = { sales: 'sales_items', purchase: 'purchase_items', sales_return: 'sales_return_items', purchase_return: 'purchase_return_items' };
+
+    const doc = (cache[storeMap[type]] || []).find(function (x) { return x.id === id; });
+    const items = (cache[itemsMap[type]] || []).filter(function (i) {
+      return (i.invoice_id === id || i.return_id === id);
+    });
+
+    if (!doc) {
+      Toast.show('❌ المستند غير موجود', 'error');
+      return;
+    }
+
+    Modal.close();
+    Printer.openDialog(doc, items, type);
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📤 فتح مودال التصدير
+  // ═══════════════════════════════════════════════════════════════════
   openExport(id, type) {
-  const storeMap = { sales: 'sales_invoices', purchase: 'purchase_invoices', sales_return: 'sales_returns', purchase_return: 'purchase_returns' };
-  const itemsMap = { sales: 'sales_items', purchase: 'purchase_items', sales_return: 'sales_return_items', purchase_return: 'purchase_return_items' };
+    const storeMap = { sales: 'sales_invoices', purchase: 'purchase_invoices', sales_return: 'sales_returns', purchase_return: 'purchase_returns' };
+    const itemsMap = { sales: 'sales_items', purchase: 'purchase_items', sales_return: 'sales_return_items', purchase_return: 'purchase_return_items' };
 
-  const store = storeMap[type];
-  const itemsStore = itemsMap[type];
+    const store = storeMap[type];
+    const itemsStore = itemsMap[type];
 
-  if (!store) {
-    Toast.show('❌ نوع المستند غير معروف: ' + type, 'error');
-    return;
-  }
+    if (!store) {
+      Toast.show('❌ نوع المستند غير معروف: ' + type, 'error');
+      return;
+    }
 
-  // ⚠️ جلب المستند
-  const doc = (cache[store] || []).find(function (x) { return x.id === id; });
-  if (!doc) {
-    Toast.show('❌ المستند غير موجود في cache[' + store + ']', 'error');
-    console.warn('openExport: doc not found', { id, type, store, cacheSize: (cache[store] || []).length });
-    return;
-  }
+    const doc = (cache[store] || []).find(function (x) { return x.id === id; });
+    if (!doc) {
+      Toast.show('❌ المستند غير موجود', 'error');
+      return;
+    }
 
-  // ⚠️ جلب الأصناف
-  const items = (cache[itemsStore] || []).filter(function (i) {
-    return (i.invoice_id === id || i.return_id === id);
-  });
+    const items = (cache[itemsStore] || []).filter(function (i) {
+      return (i.invoice_id === id || i.return_id === id);
+    });
 
-  // ⚠️ لو مفيش أصناف، نحاول نجيبهم من Firebase مباشرة
-  if (items.length === 0) {
-    console.warn('openExport: no items found in cache, fetching from Firebase...');
-    Toast.show('⏳ جاري جلب الأصناف...', 'info');
+    // ⚠️ لو مفيش أصناف، نحاول نجيبهم من Firebase
+    if (items.length === 0 && State.companyRef) {
+      Toast.show('⏳ جاري جلب الأصناف من السحابة...', 'info');
+      State.companyRef.child(itemsStore).orderByChild('invoice_id').equalTo(id).once('value')
+        .then(function (snap) {
+          const val = snap.val();
+          const fbItems = val ? Object.values(val) : [];
 
-    State.companyRef.child(itemsStore).orderByChild('invoice_id').equalTo(id).once('value')
-      .then(function (snap) {
-        const val = snap.val();
-        const fbItems = val ? Object.values(val) : [];
-
-        if (fbItems.length === 0) {
-          Toast.show('⚠️ لا توجد أصناف لهذه الفاتورة', 'error');
-          return;
-        }
-
-        // ⚠️ حدّث cache
-        if (!cache[itemsStore]) cache[itemsStore] = [];
-        fbItems.forEach(function (item) {
-          if (item && item.id) {
-            const idx = cache[itemsStore].findIndex(function (x) { return x.id === item.id; });
-            if (idx >= 0) cache[itemsStore][idx] = item;
-            else cache[itemsStore].push(item);
+          if (fbItems.length === 0) {
+            Toast.show('⚠️ لا توجد أصناف لهذه الفاتورة', 'error');
+            return;
           }
+
+          if (!cache[itemsStore]) cache[itemsStore] = [];
+          fbItems.forEach(function (item) {
+            if (item && item.id) {
+              const idx = cache[itemsStore].findIndex(function (x) { return x.id === item.id; });
+              if (idx >= 0) cache[itemsStore][idx] = item;
+              else cache[itemsStore].push(item);
+            }
+          });
+
+          Modal.close();
+          Export.openDialog(type, doc, fbItems);
+        })
+        .catch(function (err) {
+          console.error('Firebase fetch failed:', err);
+          Toast.show('⚠️ فتح التصدير بـ بيانات فارغة', 'warning');
+          Modal.close();
+          Export.openDialog(type, doc, []);
         });
+      return;
+    }
 
-        // ⚠️ افتح الـ dialog
-        Export.openDialog(type, doc, fbItems);
-      })
-      .catch(function (err) {
-        console.error('Firebase fetch failed:', err);
-        Toast.show('❌ فشل جلب الأصناف', 'error');
-      });
+    Modal.close();
+    Export.openDialog(type, doc, items);
+  },
 
-    return;
-  }
-
-  // ⚠️ لو فيه أصناف في cache، افتح مباشرة
-  Export.openDialog(type, doc, items);
-},
-
+  // ═══════════════════════════════════════════════════════════════════
+  // 🖨️ طباعة سريعة (من القائمة)
+  // ═══════════════════════════════════════════════════════════════════
   async print(id, type) {
     const storeMap = { sales: 'sales_invoices', purchase: 'purchase_invoices', sales_return: 'sales_returns', purchase_return: 'purchase_returns' };
     const itemsMap = { sales: 'sales_items', purchase: 'purchase_items', sales_return: 'sales_return_items', purchase_return: 'purchase_return_items' };
+
     const doc = (cache[storeMap[type]] || []).find(function (x) { return x.id === id; });
-    const items = (cache[itemsMap[type]] || []).filter(function (i) { return (i.invoice_id === id || i.return_id === id); });
+    if (!doc) return;
+
+    const items = (cache[itemsMap[type]] || []).filter(function (i) {
+      return (i.invoice_id === id || i.return_id === id);
+    });
+
     const html = Export.generateHTML(doc, items, type);
     await Export.printHTML(html, 'dialog');
     await Activity.log('print', doc.invoice_no || doc.return_no || '');
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 💾 حفظ على الجهاز
+  // ═══════════════════════════════════════════════════════════════════
   saveToPhone(id, type) {
     const storeMap = { sales: 'sales_invoices', purchase: 'purchase_invoices', sales_return: 'sales_returns', purchase_return: 'purchase_returns' };
     const itemsMap = { sales: 'sales_items', purchase: 'purchase_items', sales_return: 'sales_return_items', purchase_return: 'purchase_return_items' };
+
     const doc = (cache[storeMap[type]] || []).find(function (x) { return x.id === id; });
-    const items = (cache[itemsMap[type]] || []).filter(function (i) { return (i.invoice_id === id || i.return_id === id); });
+    if (!doc) return;
+
+    const items = (cache[itemsMap[type]] || []).filter(function (i) {
+      return (i.invoice_id === id || i.return_id === id);
+    });
+
     const html = Export.generateHTML(doc, items, type);
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -6326,23 +6586,41 @@ const Invoices = {
     Toast.show('✅ تم الحفظ');
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 📱 مشاركة
+  // ═══════════════════════════════════════════════════════════════════
   async share(id, type) {
     const storeMap = { sales: 'sales_invoices', purchase: 'purchase_invoices', sales_return: 'sales_returns', purchase_return: 'purchase_returns' };
     const itemsMap = { sales: 'sales_items', purchase: 'purchase_items', sales_return: 'sales_return_items', purchase_return: 'purchase_return_items' };
+
     const doc = (cache[storeMap[type]] || []).find(function (x) { return x.id === id; });
-    const items = (cache[itemsMap[type]] || []).filter(function (i) { return (i.invoice_id === id || i.return_id === id); });
+    if (!doc) return;
+
+    const items = (cache[itemsMap[type]] || []).filter(function (i) {
+      return (i.invoice_id === id || i.return_id === id);
+    });
+
     await Export.share(doc, items, type);
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 💳 سداد الفاتورة (محسّن)
+  // ═══════════════════════════════════════════════════════════════════
   async pay(invId, type) {
     if (!requirePermission('vouchers_create', 'سداد')) return;
 
     const store = type === 'sales' ? 'sales_invoices' : 'purchase_invoices';
     const inv = (cache[store] || []).find(function (x) { return x.id === invId; });
-    if (!inv) return;
+    if (!inv) {
+      Toast.show('❌ الفاتورة غير موجودة', 'error');
+      return;
+    }
 
     const remaining = Number(inv.remaining) || 0;
-    if (remaining <= 0) return Toast.show('الفاتورة مسددة بالكامل', 'error');
+    if (remaining <= 0) {
+      Toast.show('✓ الفاتورة مسددة بالكامل', 'info');
+      return;
+    }
 
     const partyId = type === 'sales' ? inv.customer_id : inv.supplier_id;
     const party = (cache.partners || []).find(function (x) { return x.id === partyId; });
@@ -6380,11 +6658,9 @@ const Invoices = {
         const method = methodEl.value;
         const notes = notesEl ? notesEl.value.trim() : '';
 
-        // ⚠️ التحقق من المبلغ
         if (amount <= 0) return Toast.show('أدخل مبلغ صحيح', 'error');
-        if (amount > remaining + 0.01) return Toast.show('المبلغ أكبر من المتبقي (' + Utils.fmtMoney(remaining) + ')', 'error');
+        if (amount > remaining + 0.01) return Toast.show('المبلغ أكبر من المتبقي', 'error');
 
-        // ⚠️ تأكيد هوية
         const verified = await Biometric.verify('تأكيد السداد');
         if (!verified) return Toast.show('❌ فشل التحقق', 'error');
 
@@ -6395,10 +6671,10 @@ const Invoices = {
         inv.remaining = Math.max(0, Number(inv.total) - inv.paid);
         await Sync.save(store, invId, inv);
 
-        // ⚠️ 2. إنشاء سند قبض/دفع
+        // ⚠️ 2. إنشاء سند
         const voucherId = Utils.genId(type === 'sales' ? 'RCV' : 'PAY');
         const voucherNo = (type === 'sales' ? 'RCV-' : 'PAY-') + Date.now();
-        const voucherData = {
+        await Sync.save('vouchers', voucherId, {
           id: voucherId,
           voucher_no: voucherNo,
           type: type === 'sales' ? 'receipt' : 'payment',
@@ -6416,8 +6692,7 @@ const Invoices = {
           invoice_id: invId,
           invoice_type: type,
           created_at: now
-        };
-        await Sync.save('vouchers', voucherId, voucherData);
+        });
 
         // ⚠️ 3. حركة الخزينة
         const cashId = Utils.genId('CSH');
@@ -6452,7 +6727,6 @@ const Invoices = {
         Modal.close();
         Toast.show('✅ تم السداد: ' + Utils.fmtMoney(amount));
 
-        // ⚠️ إعادة تحميل الفواتير
         setTimeout(function () {
           Invoices.render();
         }, 500);
