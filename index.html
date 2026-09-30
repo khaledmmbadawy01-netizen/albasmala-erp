@@ -2449,13 +2449,51 @@ body::after {
        📦 صفحة المنتجات
        ═══════════════════════════════════════════════════════════════ -->
   <div id="page-products" class="page hidden">
-    <div class="search-bar">
-      <span>🔍</span>
-      <input type="text" id="prodSearch" placeholder="ابحث بالاسم أو الباركود..." oninput="Products.search()">
-      <button class="btn btn-primary btn-sm" onclick="Scanner.open('search')">📷</button>
+  <!-- ⚠️ الإحصائيات -->
+  <div id="prodStats" class="stats-grid"></div>
+
+  <!-- ⚠️ البحث -->
+  <div class="search-bar">
+    <span>🔍</span>
+    <input type="text" id="prodSearch" placeholder="ابحث بالاسم أو الباركود أو الكود..." oninput="Products.search(this.value)">
+    <button class="btn btn-primary btn-sm" onclick="Scanner.open('search')">📷</button>
+  </div>
+
+  <!-- ⚠️ فلتر المخزون -->
+  <div style="padding:0 12px;margin-bottom:8px;display:flex;gap:6px;overflow-x:auto;" id="prodStockFilter">
+    <button class="btn btn-sm btn-primary filter-btn active" data-stock="all" onclick="Products.setStockFilter('all')">📦 الكل</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-stock="available" onclick="Products.setStockFilter('available')">✓ متوفر</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-stock="low" onclick="Products.setStockFilter('low')">⚠️ نواقص</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-stock="out" onclick="Products.setStockFilter('out')">❌ نفذت</button>
+  </div>
+
+  <!-- ⚠️ الترتيب -->
+  <div class="search-bar">
+    <span>🔽</span>
+    <select id="prodSort" style="flex:1;background:transparent;border:none;color:var(--text);font-size:15px;outline:none;" onchange="Products.setSort(this.value)">
+      <option value="newest">🆕 الأحدث</option>
+      <option value="best_selling">🏆 الأكثر مبيعاً</option>
+      <option value="cheapest">💰 الأقل سعراً</option>
+      <option value="expensive">💎 الأكثر سعراً</option>
+      <option value="qty_high">📈 الأعلى كمية</option>
+      <option value="qty_low">📉 الأقل كمية</option>
+    </select>
+    <button class="btn btn-outline btn-sm" onclick="Products.resetFilters()">🔄</button>
+  </div>
+
+  <!-- ⚠️ القائمة -->
+  <div id="prodList"></div>
+
+  <!-- ⚠️ أزرار التصدير -->
+  <div class="card" style="margin-top:12px;">
+    <h3>📤 تصدير المنتجات</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <button class="btn btn-primary" onclick="Products.exportExcel()">📊 Excel</button>
+      <button class="btn btn-info" onclick="Products.exportPDF()">📄 PDF</button>
     </div>
-    <div id="prodList"></div>
-    <button class="fab" onclick="Products.edit()" id="prodAddBtn">+</button>
+  </div>
+
+  <button class="fab" onclick="Products.edit()" id="prodAddBtn">+</button>
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
