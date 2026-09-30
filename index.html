@@ -3295,9 +3295,14 @@ body::after {
       <button class="btn btn-warning btn-full" onclick="Scanner.test()" style="margin-bottom:8px;">📷 اختبار الكاميرا</button>
       <button class="btn btn-info btn-full" onclick="LocationService.test()" style="margin-bottom:8px;">📍 اختبار الموقع</button>
     </div>
-    <div class="card" id="adminTools">
-      <h3>🔐 أدوات المدير</h3>
-      <button class="btn btn-primary btn-full" onclick="Backup.export()" style="margin-bottom:8px;">💾 تصدير نسخة احتياطية</button>
+    <div class="card">
+  <h3>🔐 الأمان</h3>
+  <button class="btn btn-warning btn-full" onclick="Biometric.setupPin(function(){})" style="margin-bottom:8px;">🔑 تغيير PIN</button>
+  <p style="font-size:11px;color:var(--text-2);text-align:center;">يُستخدم عند تعذّر التحقق بالبصمة</p>
+</div>
+<div class="card" id="adminTools">
+  <h3>🔐 أدوات المدير</h3>
+  <button class="btn btn-primary btn-full" onclick="Backup.export()" style="margin-bottom:8px;">💾 تصدير نسخة احتياطية</button>
       <button class="btn btn-info btn-full" onclick="Backup.import()" style="margin-bottom:8px;">📂 استيراد نسخة</button>
 <button class="btn btn-warning btn-full" onclick="Backup.resetWorkData()" style="margin-bottom:8px;">🧹 تصفير البيانات العملية (كلمة سر)</button>
 <button class="btn btn-danger btn-full" onclick="Backup.clearUI()">🗑️ مسح بيانات الشركة</button>
