@@ -3770,17 +3770,44 @@ const App = {
       State.companyRef = null;
       State.listeners = [];
       State._saleFormActive = false;
-      State._purchaseFormActive = false;
-      State._returnFormActive = false;
-      State._initialized = { sales: false, purchase: false, returns: false };
+State._purchaseFormActive = false;
+State._returnFormActive = false;
+State._initialized = { sales: false, purchase: false, returns: false };
 
-      try { localStorage.removeItem('company_id'); } catch (e) {}
+// ⚠️ حفظ companyId الحالي قبل المسح
+const previousCompanyId = State.currentCompanyId;
 
-      try {
-        if (typeof saleItems !== 'undefined') saleItems.length = 0;
-        if (typeof purItems !== 'undefined') purItems.length = 0;
-        if (typeof retItems !== 'undefined') retItems.length = 0;
-      } catch (e) {}
+try { localStorage.removeItem('company_id'); } catch (e) {}
+
+// ⚠️ [إصلاح أمني] مسح كل cache الشركة الحالية من localStorage
+// عشان لو الجهاز مشترك، المستخدم الجديد مايشوفش بيانات الشركة القديمة
+try {
+  const keysToRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k) continue;
+    // cache الشركة الحالية
+    if (previousCompanyId && k.startsWith('cache_' + previousCompanyId + '_')) {
+      keysToRemove.push(k);
+    }
+    // offline data
+    if (previousCompanyId && k.startsWith('offline_data_' + previousCompanyId + '_')) {
+      keysToRemove.push(k);
+    }
+    // pending changes
+    if (previousCompanyId && k === 'pending_changes_' + previousCompanyId) {
+      keysToRemove.push(k);
+    }
+  }
+  keysToRemove.forEach(function (k) { localStorage.removeItem(k); });
+  console.log('🧹 Cleared ' + keysToRemove.length + ' cache keys for company: ' + previousCompanyId);
+} catch (e) { console.warn('cache clear error:', e); }
+
+try {
+  if (typeof saleItems !== 'undefined') saleItems.length = 0;
+  if (typeof purItems !== 'undefined') purItems.length = 0;
+  if (typeof retItems !== 'undefined') retItems.length = 0;
+} catch (e) {}
 
       const mainApp = document.getElementById('mainApp');
       if (mainApp) mainApp.classList.add('hidden');
