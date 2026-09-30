@@ -2715,12 +2715,49 @@ body::after {
        🧾 صفحة السندات
        ═══════════════════════════════════════════════════════════════ -->
   <div id="page-vouchers" class="page hidden">
-    <div class="tabs">
-      <div class="tab active" onclick="Vouchers.switchTab(event,'receipt')">سندات القبض</div>
-      <div class="tab" onclick="Vouchers.switchTab(event,'payment')">سندات الدفع</div>
+  <div class="tabs">
+    <div class="tab active" onclick="Vouchers.switchTab(event,'receipt')">🧾 سندات القبض</div>
+    <div class="tab" onclick="Vouchers.switchTab(event,'payment')">🧾 سندات الدفع</div>
+  </div>
+
+  <!-- ⚠️ الإحصائيات -->
+  <div id="voucherStats" class="stats-grid"></div>
+
+  <!-- ⚠️ البحث -->
+  <div class="search-bar">
+    <span>🔍</span>
+    <input type="text" id="voucherSearch" placeholder="ابحث في الرقم أو الجهة..." oninput="Vouchers.search(this.value)">
+  </div>
+
+  <!-- ⚠️ فلتر طريقة الدفع -->
+  <div style="padding:0 12px;margin-bottom:8px;display:flex;gap:6px;overflow-x:auto;" id="voucherMethodFilter">
+    <button class="btn btn-sm btn-primary filter-btn active" data-method="all" onclick="Vouchers.setMethodFilter('all')">💼 الكل</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-method="نقدي" onclick="Vouchers.setMethodFilter('نقدي')">💵 نقدي</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-method="بنك" onclick="Vouchers.setMethodFilter('بنك')">🏦 بنكي</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-method="محفظة" onclick="Vouchers.setMethodFilter('محفظة')">📲 محفظة</button>
+  </div>
+
+  <!-- ⚠️ فلتر التاريخ -->
+  <div class="search-bar" style="flex-wrap:wrap;">
+    <span>📅</span>
+    <input type="date" id="voucherFrom" style="flex:1;min-width:110px;" onchange="Vouchers.render()">
+    <input type="date" id="voucherTo" style="flex:1;min-width:110px;" onchange="Vouchers.render()">
+    <button class="btn btn-outline btn-sm" onclick="Vouchers.resetFilters()">🔄</button>
+  </div>
+
+  <!-- ⚠️ القائمة -->
+  <div id="voucherList"></div>
+
+  <!-- ⚠️ أزرار التصدير -->
+  <div class="card" style="margin-top:12px;">
+    <h3>📤 تصدير السندات</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <button class="btn btn-primary" onclick="Vouchers.exportExcel()">📊 Excel</button>
+      <button class="btn btn-info" onclick="Vouchers.exportPDF()">📄 PDF</button>
     </div>
-    <div id="voucherList"></div>
-    <button class="fab" onclick="Vouchers.create()" id="voucherAddBtn">+</button>
+  </div>
+
+  <button class="fab" onclick="Vouchers.create()" id="voucherAddBtn">+</button>
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
