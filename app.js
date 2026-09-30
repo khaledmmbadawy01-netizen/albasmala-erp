@@ -821,24 +821,35 @@ const Activity = {
 
 /* ═══════════════════════════════════════════════════════════════════
    9. Biometric (3-Tier: Cordova → WebAuthn → PIN)
+   ⚠️ تم إصلاح ثغرة PIN الافتراضي '0000'
    ═══════════════════════════════════════════════════════════════════ */
 const Biometric = {
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 1) verify — نقطة الدخول الرئيسية (3 طبقات)
+  // ═══════════════════════════════════════════════════════════════════
   async verify(reason) {
     reason = reason || 'تأكيد الهوية';
-    // 1. Cordova Fingerprint
+
+    // الطبقة 1: Cordova Fingerprint (لو موجود)
     if (window.Fingerprint && typeof Fingerprint.isAvailable === 'function') {
       const ok = await Biometric.cordovaFingerprint(reason);
       if (ok) return true;
     }
-    // 2. WebAuthn
+
+    // الطبقة 2: WebAuthn (لو المتصفح يدعم)
     if (window.PublicKeyCredential) {
       const ok = await Biometric.webauthn(reason);
       if (ok) return true;
     }
-    // 3. PIN Fallback
+
+    // الطبقة 3: PIN Fallback
     return await Biometric.pinFallback(reason);
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 2) cordovaFingerprint — بصمة APK
+  // ═══════════════════════════════════════════════════════════════════
   cordovaFingerprint(reason) {
     return new Promise(function (resolve) {
       try {
@@ -856,10 +867,15 @@ const Biometric = {
             resolve(true);
           }, function () { resolve(false); });
         }, function () { resolve(false); });
-      } catch (e) { resolve(false); }
+      } catch (e) {
+        resolve(false);
+      }
     });
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 3) webauthn — بصمة الويب (يحتاج HTTPS + تسجيل مسبق)
+  // ═══════════════════════════════════════════════════════════════════
   async webauthn(reason) {
     try {
       if (!navigator.credentials) return false;
@@ -867,67 +883,242 @@ const Biometric = {
         const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
         if (!available) return false;
       }
+      // ⚠️ WebAuthn يحتاج تسجيل مسبق — لا نستخدمه حالياً
       return false;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 4) pinFallback — عرض شاشة إدخال PIN
+  // ═══════════════════════════════════════════════════════════════════
   pinFallback(reason) {
-  return new Promise(function (resolve) {
-    State.pinBuffer = '';
-    State.pinCallback = resolve;
+    return new Promise(function (resolve) {
+      State.pinBuffer = '';
+      State.pinCallback = resolve;
+
+      const html =
+        '<div style="text-align:center;">' +
+          '<p style="color:var(--text-2);margin-bottom:12px;">' + Utils.esc(reason) + '</p>' +
+          '<div class="pin-display" id="pinDisplay">' +
+            '<div class="pin-dot"></div><div class="pin-dot"></div>' +
+            '<div class="pin-dot"></div><div class="pin-dot"></div>' +
+          '</div>' +
+          '<div class="pin-grid">' +
+            '<button class="pin-btn" onclick="Biometric.pinPress(\'1\')">1</button>' +
+            '<button class="pin-btn" onclick="Biometric.pinPress(\'2\')">2</button>' +
+            '<button class="pin-btn" onclick="Biometric.pinPress(\'3\')">3</button>' +
+            '<button class="pin-btn" onclick="Biometric.pinPress(\'4\')">4</button>' +
+            '<button class="pin-btn" onclick="Biometric.pinPress(\'5\')">5</button>' +
+            '<button class="pin-btn" onclick="Biometric.pinPress(\'6\')">6</button>' +
+            '<button class="pin-btn" onclick="Biometric.pinPress(\'7\')">7</button>' +
+            '<button class="pin-btn" onclick="Biometric.pinPress(\'8\')">8</button>' +
+            '<button class="pin-btn" onclick="Biometric.pinPress(\'9\')">9</button>' +
+            '<button class="pin-btn empty"></button>' +
+            '<button class="pin-btn" onclick="Biometric.pinPress(\'0\')">0</button>' +
+            '<button class="pin-btn del" onclick="Biometric.pinDelete()">⌫</button>' +
+          '</div>' +
+        '</div>';
+
+      Modal.open('🔒 تأكيد', html, null, 'إلغاء');
+    });
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 5) pinPress — [معدّلة] ضغط أرقام أثناء التحقق
+  //    ⚠️ الإصلاح: لو مفيش PIN مسجّل → يطلب تعيين واحد جديد
+  // ═══════════════════════════════════════════════════════════════════
+  pinPress(digit) {
+    if (State.pinBuffer.length >= 4) return;
+    State.pinBuffer += digit;
+    Utils.vibrate(30);
+    Biometric.updatePinDisplay();
+
+    if (State.pinBuffer.length === 4) {
+      setTimeout(function () {
+        const uid = State.currentUser ? State.currentUser.uid : 'x';
+        const storedPin = localStorage.getItem('user_pin_' + uid);
+
+        // ⚠️ [إصلاح أمني] لو مفيش PIN مسجّل، نطلب تعيين واحد جديد
+        if (!storedPin) {
+          Toast.show('⚠️ لم يتم تعيين PIN — يجب تعيينه أولاً', 'error');
+          State.pinBuffer = '';
+          Biometric.updatePinDisplay();
+          Modal.close();
+
+          setTimeout(function () {
+            Biometric.setupPin(function (success) {
+              if (State.pinCallback) {
+                const cb = State.pinCallback;
+                State.pinCallback = null;
+                cb(success);
+              }
+            });
+          }, 300);
+          return;
+        }
+
+        // ⚠️ PIN صحيح
+        if (State.pinBuffer === storedPin) {
+          Utils.vibrate(80);
+          Modal.close();
+          if (State.pinCallback) {
+            const cb = State.pinCallback;
+            State.pinCallback = null;
+            cb(true);
+          }
+        } else {
+          // ⚠️ PIN خاطئ
+          Toast.show('❌ PIN خاطئ', 'error');
+          State.pinBuffer = '';
+          Biometric.updatePinDisplay();
+          Utils.vibrate([100, 50, 100]);
+        }
+      }, 200);
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 6) setupPin — [جديد] تعيين PIN لأول مرة
+  //    بيشتغل على مرحلتين: إدخال + تأكيد
+  // ═══════════════════════════════════════════════════════════════════
+  setupPin(callback) {
+    State._newPinBuffer = '';
+    State._newPinConfirm = '';
+    State._newPinStage = 'first'; // 'first' | 'confirm'
+    State._setupPinCallback = callback || null;
+
+    const isFirst = State._newPinStage === 'first';
+    const title = isFirst ? '🔐 عيّن PIN جديد (4 أرقام)' : '🔐 أكد PIN الجديد';
+
+    const dots = [0, 1, 2, 3].map(function () {
+      return '<div class="pin-dot"></div>';
+    }).join('');
+
     const html =
       '<div style="text-align:center;">' +
-        '<p style="color:var(--text-2);margin-bottom:12px;">' + Utils.esc(reason) + '</p>' +
-        '<div class="pin-display" id="pinDisplay">' +
-          '<div class="pin-dot"></div><div class="pin-dot"></div>' +
-          '<div class="pin-dot"></div><div class="pin-dot"></div>' +
-        '</div>' +
+        '<p style="color:var(--gold);font-weight:700;margin-bottom:12px;">' + title + '</p>' +
+        '<div class="pin-display" id="pinDisplay">' + dots + '</div>' +
         '<div class="pin-grid">' +
-          '<button class="pin-btn" onclick="Biometric.pinPress(\'1\')">1</button>' +
-          '<button class="pin-btn" onclick="Biometric.pinPress(\'2\')">2</button>' +
-          '<button class="pin-btn" onclick="Biometric.pinPress(\'3\')">3</button>' +
-          '<button class="pin-btn" onclick="Biometric.pinPress(\'4\')">4</button>' +
-          '<button class="pin-btn" onclick="Biometric.pinPress(\'5\')">5</button>' +
-          '<button class="pin-btn" onclick="Biometric.pinPress(\'6\')">6</button>' +
-          '<button class="pin-btn" onclick="Biometric.pinPress(\'7\')">7</button>' +
-          '<button class="pin-btn" onclick="Biometric.pinPress(\'8\')">8</button>' +
-          '<button class="pin-btn" onclick="Biometric.pinPress(\'9\')">9</button>' +
+          '<button class="pin-btn" onclick="Biometric.setupPinPress(\'1\')">1</button>' +
+          '<button class="pin-btn" onclick="Biometric.setupPinPress(\'2\')">2</button>' +
+          '<button class="pin-btn" onclick="Biometric.setupPinPress(\'3\')">3</button>' +
+          '<button class="pin-btn" onclick="Biometric.setupPinPress(\'4\')">4</button>' +
+          '<button class="pin-btn" onclick="Biometric.setupPinPress(\'5\')">5</button>' +
+          '<button class="pin-btn" onclick="Biometric.setupPinPress(\'6\')">6</button>' +
+          '<button class="pin-btn" onclick="Biometric.setupPinPress(\'7\')">7</button>' +
+          '<button class="pin-btn" onclick="Biometric.setupPinPress(\'8\')">8</button>' +
+          '<button class="pin-btn" onclick="Biometric.setupPinPress(\'9\')">9</button>' +
           '<button class="pin-btn empty"></button>' +
-          '<button class="pin-btn" onclick="Biometric.pinPress(\'0\')">0</button>' +
-          '<button class="pin-btn del" onclick="Biometric.pinDelete()">⌫</button>' +
+          '<button class="pin-btn" onclick="Biometric.setupPinPress(\'0\')">0</button>' +
+          '<button class="pin-btn del" onclick="Biometric.setupPinDelete()">⌫</button>' +
         '</div>' +
+        '<p style="color:var(--text-3);font-size:11px;margin-top:12px;">🔒 احفظ الرقم في مكان آمن</p>' +
       '</div>';
-    Modal.open('🔒 تأكيد', html, null, 'إلغاء');
-  });
-},
-   
-  pinPress(digit) {
-  if (State.pinBuffer.length >= 4) return;
-  State.pinBuffer += digit;
-  Utils.vibrate(30);
-  Biometric.updatePinDisplay();
-  if (State.pinBuffer.length === 4) {
-    setTimeout(function () {
-      const storedPin = localStorage.getItem('user_pin_' + (State.currentUser ? State.currentUser.uid : 'x')) || '0000';
-      //                                                                                            ↑↑↑↑
-      //                                                                     PIN افتراضي مش سهل تخمينه
-      if (State.pinBuffer === storedPin) {
-        Modal.close();
-        if (State.pinCallback) State.pinCallback(true);
-      } else {
-        Toast.show('❌ PIN خاطئ', 'error');
-        State.pinBuffer = '';
-        Biometric.updatePinDisplay();
-      }
-    }, 200);
-  }
-},
 
+    Modal.open('🔐 تعيين PIN', html, null, 'إلغاء');
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 7) setupPinPress — [جديد] ضغط أرقام أثناء التعيين
+  // ═══════════════════════════════════════════════════════════════════
+  setupPinPress(digit) {
+    // ═══ المرحلة الأولى: إدخال PIN جديد ═══
+    if (State._newPinStage === 'first') {
+      if (State._newPinBuffer.length >= 4) return;
+      State._newPinBuffer += digit;
+      Utils.vibrate(30);
+      Biometric.updateSetupDisplay();
+
+      // خلص 4 أرقام → انتقل لمرحلة التأكيد
+      if (State._newPinBuffer.length === 4) {
+        setTimeout(function () {
+          State._newPinStage = 'confirm';
+          State._newPinConfirm = '';
+          Biometric.setupPin(State._setupPinCallback);
+        }, 250);
+      }
+      return;
+    }
+
+    // ═══ المرحلة الثانية: تأكيد PIN ═══
+    if (State._newPinConfirm.length >= 4) return;
+    State._newPinConfirm += digit;
+    Utils.vibrate(30);
+    Biometric.updateSetupDisplay();
+
+    if (State._newPinConfirm.length === 4) {
+      setTimeout(function () {
+        // ═══ تطابق → احفظ ═══
+        if (State._newPinBuffer === State._newPinConfirm) {
+          const uid = State.currentUser ? State.currentUser.uid : 'x';
+          try {
+            localStorage.setItem('user_pin_' + uid, State._newPinBuffer);
+            Toast.show('✅ تم تعيين PIN بنجاح');
+            Utils.vibrate(80);
+
+            const cb = State._setupPinCallback;
+            State._setupPinCallback = null;
+            State._newPinBuffer = '';
+            State._newPinConfirm = '';
+            State._newPinStage = 'first';
+
+            Modal.close();
+            if (cb) cb(true);
+          } catch (e) {
+            Toast.show('❌ فشل الحفظ: ' + e.message, 'error');
+          }
+        } else {
+          // ═══ مش متطابق → أعد من البداية ═══
+          Toast.show('❌ الأرقام غير متطابقة — أعد المحاولة', 'error');
+          Utils.vibrate([100, 50, 100]);
+          State._newPinBuffer = '';
+          State._newPinConfirm = '';
+          State._newPinStage = 'first';
+          Biometric.setupPin(State._setupPinCallback);
+        }
+      }, 250);
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 8) setupPinDelete — [جديد] مسح رقم أثناء التعيين
+  // ═══════════════════════════════════════════════════════════════════
+  setupPinDelete() {
+    if (State._newPinStage === 'first') {
+      State._newPinBuffer = State._newPinBuffer.slice(0, -1);
+    } else {
+      State._newPinConfirm = State._newPinConfirm.slice(0, -1);
+    }
+    Biometric.updateSetupDisplay();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 9) updateSetupDisplay — [جديد] تحديث نقاط العرض أثناء التعيين
+  // ═══════════════════════════════════════════════════════════════════
+  updateSetupDisplay() {
+    const currentBuffer = State._newPinStage === 'first'
+      ? State._newPinBuffer
+      : State._newPinConfirm;
+
+    const dots = document.querySelectorAll('#pinDisplay .pin-dot');
+    dots.forEach(function (d, i) {
+      d.classList.toggle('filled', i < currentBuffer.length);
+    });
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 10) pinDelete — مسح رقم أثناء التحقق
+  // ═══════════════════════════════════════════════════════════════════
   pinDelete() {
     State.pinBuffer = State.pinBuffer.slice(0, -1);
     Biometric.updatePinDisplay();
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 11) updatePinDisplay — تحديث نقاط العرض أثناء التحقق
+  // ═══════════════════════════════════════════════════════════════════
   updatePinDisplay() {
     const dots = document.querySelectorAll('#pinDisplay .pin-dot');
     dots.forEach(function (d, i) {
@@ -935,6 +1126,9 @@ const Biometric = {
     });
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 12) test — اختبار البصمة
+  // ═══════════════════════════════════════════════════════════════════
   async test() {
     const ok = await Biometric.verify('اختبار البصمة');
     Toast.show(ok ? '✅ التحقق ناجح' : '❌ فشل التحقق', ok ? 'success' : 'error');
