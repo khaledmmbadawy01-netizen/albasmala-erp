@@ -7119,174 +7119,456 @@ const Reports = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
-   36. Statements
+   36. Statements — كشوف الحسابات الاحترافية
    ═══════════════════════════════════════════════════════════════════ */
 const Statements = {
+  // ⚠️ الحالة الحالية
+  _currentPartnerId: null,
+  _currentEmployeeId: null,
+  _currentCashFilters: { from: '', to: '', account: 'all' },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🔄 التبويبات
+  // ═══════════════════════════════════════════════════════════════════
   switchTab(e, tab) {
     State.currentStmtTab = tab;
     document.querySelectorAll('#page-statements .tab').forEach(function (t) { t.classList.remove('active'); });
     if (e && e.target) e.target.classList.add('active');
+
     const p1 = document.getElementById('stmt-partner');
     const p2 = document.getElementById('stmt-employee');
     const p3 = document.getElementById('stmt-cash');
+
     if (p1) p1.classList.toggle('hidden', tab !== 'partner');
     if (p2) p2.classList.toggle('hidden', tab !== 'employee');
     if (p3) p3.classList.toggle('hidden', tab !== 'cash');
+
     if (tab === 'partner') Statements.loadPartnerOptions();
     else if (tab === 'employee') Statements.loadEmployeeOptions();
+    else if (tab === 'cash') Statements.loadCashAccounts();
   },
 
   init() {
     if (State.currentStmtTab === 'partner') Statements.loadPartnerOptions();
     else if (State.currentStmtTab === 'employee') Statements.loadEmployeeOptions();
+    else if (State.currentStmtTab === 'cash') Statements.loadCashAccounts();
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 👥 قوائم العملاء/الموردين والموظفين
+  // ═══════════════════════════════════════════════════════════════════
   loadPartnerOptions() {
     const partners = (cache.partners || []).filter(function (p) { return p.active !== false; });
     const el = document.getElementById('stmtPartner');
     if (el) {
-      el.innerHTML = '<option value="">-- اختر --</option>' +
-        partners.map(function (p) { return '<option value="' + p.id + '">' + Utils.esc(p.name) + '</option>'; }).join('');
+      el.innerHTML = '<option value="">-- اختر عميل أو مورد --</option>' +
+        partners.map(function (p) {
+          const typeLabel = p.type === 'customer' ? '👤' : '🏭';
+          return '<option value="' + p.id + '">' + typeLabel + ' ' + Utils.esc(p.name) + '</option>';
+        }).join('');
     }
     const listEl = document.getElementById('stmtPartnerList');
-    if (listEl) listEl.innerHTML = '';
+    if (listEl) {
+      listEl.innerHTML = '<div class="empty"><div class="ico">👤</div>اختر عميل أو مورد لعرض كشف حسابه</div>';
+    }
   },
 
   loadEmployeeOptions() {
     const emps = (cache.employees || []).filter(function (e) { return e.active !== false; });
     const el = document.getElementById('stmtEmp');
     if (el) {
-      el.innerHTML = '<option value="">-- اختر --</option>' +
-        emps.map(function (e) { return '<option value="' + e.uid + '">' + Utils.esc(e.name) + '</option>'; }).join('');
+      el.innerHTML = '<option value="">-- اختر موظف --</option>' +
+        emps.map(function (e) {
+          return '<option value="' + e.uid + '">👤 ' + Utils.esc(e.name) + '</option>';
+        }).join('');
     }
     const listEl = document.getElementById('stmtEmpList');
-    if (listEl) listEl.innerHTML = '';
+    if (listEl) {
+      listEl.innerHTML = '<div class="empty"><div class="ico">👤</div>اختر موظف لعرض كشف حسابه</div>';
+    }
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 🏦 قائمة الحسابات (للخزينة)
+  // ═══════════════════════════════════════════════════════════════════
+  loadCashAccounts() {
+    const accounts = getAllAccounts();
+    const selectEl = document.getElementById('stmtCashAccount');
+    if (selectEl && selectEl.options.length <= 1) {
+      selectEl.innerHTML = '<option value="all">🏦 كل الحسابات</option>' +
+        accounts.map(function (acc) {
+          return '<option value="' + acc.id + '">' + acc.icon + ' ' + Utils.esc(acc.label) + '</option>';
+        }).join('');
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📄 كشف حساب العميل/المورد
+  // ═══════════════════════════════════════════════════════════════════
   loadPartner() {
     const selectEl = document.getElementById('stmtPartner');
     const id = selectEl ? selectEl.value : '';
-    if (!id) return;
+    if (!id) {
+      const listEl = document.getElementById('stmtPartnerList');
+      if (listEl) listEl.innerHTML = '<div class="empty"><div class="ico">👤</div>اختر عميل أو مورد</div>';
+      return;
+    }
+
+    Statements._currentPartnerId = id;
     const p = (cache.partners || []).find(function (x) { return x.id === id; });
     if (!p) return;
 
+    // ⚠️ جلب الحركات
     const sales = (cache.sales_invoices || []).filter(function (s) { return s.customer_id === id; });
     const purchases = (cache.purchase_invoices || []).filter(function (s) { return s.supplier_id === id; });
+    const salesReturns = (cache.sales_returns || []).filter(function (r) { return r.customer_id === id; });
+    const purchaseReturns = (cache.purchase_returns || []).filter(function (r) { return r.supplier_id === id; });
     const vouchers = (cache.vouchers || []).filter(function (v) { return v.partner_id === id; });
+
     const transactions = [];
 
-    for (const s of sales) transactions.push({ date: s.date, type: 'فاتورة مبيعات', ref: s.invoice_no, debit: s.total, credit: s.paid, color: 'var(--green-2)' });
-    for (const pu of purchases) transactions.push({ date: pu.date, type: 'فاتورة مشتريات', ref: pu.invoice_no, debit: pu.paid, credit: pu.total, color: 'var(--orange-2)' });
-    for (const v of vouchers) transactions.push({
-      date: v.date, type: v.type === 'receipt' ? 'سند قبض' : 'سند دفع',
-      ref: v.voucher_no,
-      debit: v.type === 'receipt' ? 0 : v.amount,
-      credit: v.type === 'receipt' ? v.amount : 0,
-      color: v.type === 'receipt' ? 'var(--blue-2)' : 'var(--red-2)'
+    // ⚠️ فواتير البيع (مدين على العميل)
+    for (const s of sales) {
+      transactions.push({
+        date: s.date || s.created_at,
+        type: 'فاتورة مبيعات',
+        icon: '🛒',
+        ref: s.invoice_no,
+        debit: Number(s.total) || 0,
+        credit: Number(s.paid) || 0,
+        remaining: Number(s.remaining) || 0,
+        color: 'var(--green-2)',
+        details: s
+      });
+    }
+
+    // ⚠️ مرتجع مبيعات (دائن للعميل)
+    for (const r of salesReturns) {
+      transactions.push({
+        date: r.date || r.created_at,
+        type: 'مرتجع مبيعات',
+        icon: '↩️',
+        ref: r.return_no,
+        debit: 0,
+        credit: Number(r.total) || 0,
+        color: 'var(--orange-2)',
+        details: r
+      });
+    }
+
+    // ⚠️ فواتير الشراء (دائن للمورد)
+    for (const pu of purchases) {
+      transactions.push({
+        date: pu.date || pu.created_at,
+        type: 'فاتورة مشتريات',
+        icon: '📦',
+        ref: pu.invoice_no,
+        debit: Number(pu.paid) || 0,
+        credit: Number(pu.total) || 0,
+        remaining: Number(pu.remaining) || 0,
+        color: 'var(--orange-2)',
+        details: pu
+      });
+    }
+
+    // ⚠️ مرتجع مشتريات
+    for (const r of purchaseReturns) {
+      transactions.push({
+        date: r.date || r.created_at,
+        type: 'مرتجع مشتريات',
+        icon: '↩️',
+        ref: r.return_no,
+        debit: Number(r.total) || 0,
+        credit: 0,
+        color: 'var(--green-2)',
+        details: r
+      });
+    }
+
+    // ⚠️ السندات
+    for (const v of vouchers) {
+      const isReceipt = v.type === 'receipt';
+      transactions.push({
+        date: v.date || v.created_at,
+        type: isReceipt ? 'سند قبض' : 'سند دفع',
+        icon: '🧾',
+        ref: v.voucher_no,
+        debit: isReceipt ? 0 : (Number(v.amount) || 0),
+        credit: isReceipt ? (Number(v.amount) || 0) : 0,
+        color: isReceipt ? 'var(--blue-2)' : 'var(--red-2)',
+        details: v,
+        method: v.payment_method
+      });
+    }
+
+    transactions.sort(function (a, b) {
+      return (a.date || '').localeCompare(b.date || '');
     });
-    transactions.sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); });
 
-    let html = '<div class="card"><h3>' + Utils.esc(p.name) + '</h3>' +
-      '<p style="color:#aaa;font-size:13px;">' + Utils.esc(p.phone || '') + '</p>' +
-      '<div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid var(--gold);margin-top:10px;font-size:18px;font-weight:700;color:' +
-        ((Number(p.balance) || 0) > 0 ? 'var(--red-2)' : 'var(--green-2)') + ';">' +
-        '<span>الرصيد:</span><span>' + Utils.fmtMoney(Math.abs(Number(p.balance) || 0)) + '</span></div></div>' +
-      '<div class="card"><h3>حركة الحساب</h3>';
+    // ⚠️ حساب الإجماليات
+    let totalDebit = 0, totalCredit = 0;
+    transactions.forEach(function (t) {
+      totalDebit += t.debit || 0;
+      totalCredit += t.credit || 0;
+    });
 
-    if (transactions.length === 0) html += '<p style="color:#666;">لا توجد حركات</p>';
-    else for (const t of transactions) {
-      html += '<div style="padding:10px 0;border-bottom:1px solid #222;">' +
-        '<div style="display:flex;justify-content:space-between;">' +
-          '<strong style="color:' + t.color + ';">' + Utils.esc(t.type) + '</strong>' +
-          '<span style="font-size:11px;color:#888;">' + Utils.fmtDate(t.date) + '</span>' +
-        '</div>' +
-        '<div style="font-size:12px;color:#aaa;margin-top:4px;">' + Utils.esc(t.ref) + '</div>' +
-        '<div style="display:flex;justify-content:space-between;margin-top:4px;font-size:13px;">' +
-          '<span>مدين: ' + Utils.fmtMoney(t.debit) + '</span>' +
-          '<span>دائن: ' + Utils.fmtMoney(t.credit) + '</span>' +
-        '</div></div>';
-    }
-    html += '</div>';
-    const listEl = document.getElementById('stmtPartnerList');
-    if (listEl) listEl.innerHTML = html;
-  },
+    const balance = Number(p.balance) || 0;
+    const balanceColor = balance > 0 ? 'var(--red-2)' : balance < 0 ? 'var(--green-2)' : '#888';
+    const balanceLabel = balance > 0 ? 'مدين لنا' : balance < 0 ? 'دائن' : 'متوازن';
 
-  loadEmployee() {
-    const selectEl = document.getElementById('stmtEmp');
-    const uid = selectEl ? selectEl.value : '';
-    if (!uid) return;
-    const emp = (cache.employees || []).find(function (x) { return x.uid === uid; });
-    if (!emp) return;
+    let html = '';
 
-    const att = (cache.attendance || []).filter(function (a) { return a.employee_uid === uid; })
-      .sort(function (a, b) { return b.date.localeCompare(a.date); });
-    const payrolls = (cache.payroll || []).filter(function (p) { return p.employee_uid === uid; })
-      .sort(function (a, b) { return b.month.localeCompare(a.month); });
-    const txs = (cache.employee_transactions || []).filter(function (t) { return t.employee_uid === uid; })
-      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    // ═══════════════════════════════════════════════════════════════
+    // 📊 البطاقة العلوية — معلومات الجهة
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card" style="border-right:4px solid ' + balanceColor + ';">' +
+      '<h3>' + (p.type === 'customer' ? '👤' : '🏭') + ' ' + Utils.esc(p.name) + '</h3>' +
+      '<p style="font-size:12px;color:var(--text-2);">📞 ' + Utils.esc(p.phone || 'بدون رقم') + '</p>' +
+      (p.address ? '<p style="font-size:12px;color:var(--text-2);">📍 ' + Utils.esc(p.address) + '</p>' : '') +
+      '<div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid var(--gold);margin-top:10px;font-size:20px;font-weight:800;color:' + balanceColor + ';">' +
+        '<span>الرصيد الحالي:</span>' +
+        '<span>' + Utils.fmtMoney(Math.abs(balance)) + '</span>' +
+      '</div>' +
+      '<div style="text-align:center;font-size:12px;color:' + balanceColor + ';">' + balanceLabel + '</div>' +
+    '</div>';
 
-    let html = '<div class="card"><h3>' + Utils.esc(emp.name) + ' - ' + Utils.esc(emp.job_title || '') + '</h3>' +
-      '<p style="font-size:12px;color:#aaa;">الراتب: ' + Utils.fmtMoney(emp.basic_salary) + '</p>' +
-      '<p style="font-size:12px;color:#aaa;">الهاتف: ' + Utils.esc(emp.phone || '-') + '</p></div>' +
-      '<div class="card"><h3>📅 الحضور (آخر 30)</h3>';
+    // ═══════════════════════════════════════════════════════════════
+    // 📊 ملخص الإجماليات
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="stats-grid" style="padding:0;">' +
+      '<div class="stat-card green">' +
+        '<div class="label">إجمالي له (دائن)</div>' +
+        '<div class="value">' + Utils.fmtNum(totalCredit) + '</div>' +
+      '</div>' +
+      '<div class="stat-card red">' +
+        '<div class="label">إجمالي عليه (مدين)</div>' +
+        '<div class="value">' + Utils.fmtNum(totalDebit) + '</div>' +
+      '</div>' +
+      '<div class="stat-card blue" style="grid-column:span 2;">' +
+        '<div class="label">عدد الحركات</div>' +
+        '<div class="value">' + transactions.length + '</div>' +
+      '</div>' +
+    '</div>';
 
-    for (const a of att.slice(0, 30)) {
-      let status = '', color = '#888';
-      if (a.status === 'leave') { status = '📅 إجازة'; color = 'var(--blue-2)'; }
-      else if (a.check_in && a.check_out) { status = '✓ ' + (a.work_hours || 0) + 'س'; color = 'var(--green-2)'; }
-      else if (a.check_in) { status = '✓ حاضر'; color = 'var(--green-2)'; }
-      const lateText = (a.minutes_late > 0) ? ' <span style="color:var(--orange-2);font-size:11px;">(تأخير ' + a.minutes_late + 'د)</span>' : '';
-      html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #222;font-size:13px;">' +
-        '<span>' + a.date + lateText + '</span><span style="color:' + color + ';">' + status + '</span></div>';
-    }
-    html += '</div><div class="card"><h3>💰 المرتبات</h3>';
-    for (const p of payrolls) {
-      html += '<div style="padding:8px 0;border-bottom:1px solid #222;">' +
-        '<div style="display:flex;justify-content:space-between;">' +
-          '<strong style="color:var(--gold);">' + Utils.esc(p.month) + '</strong>' +
-          '<span style="color:' + (p.status === 'paid' ? 'var(--green-2)' : 'var(--orange-2)') + ';">' +
-            (p.status === 'paid' ? 'مدفوع' : 'مستحق') + '</span>' +
-        '</div>' +
-        '<div style="font-size:13px;margin-top:4px;">الصافي: ' + Utils.fmtMoney(p.net_salary) + '</div>' +
-        '<div style="font-size:11px;color:#888;">غياب: ' + (p.absence_days || 0) + ' يوم | تأخير: ' + (p.late_minutes || 0) + ' د</div>' +
-      '</div>';
-    }
-    html += '</div>';
+    // ═══════════════════════════════════════════════════════════════
+    // 📜 الحركات
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card"><h3>📜 حركة الحساب (' + transactions.length + ')</h3>';
 
-    if (txs.length > 0) {
-      html += '<div class="card"><h3>💵 السلف والمكافآت</h3>';
-      const typeMap = { 'advance': '💰 سلفة', 'bonus': '🎁 مكافأة', 'deduction': '➖ خصم' };
-      for (const t of txs) {
-        const color = t.type === 'advance' ? 'var(--orange-2)' : t.type === 'bonus' ? 'var(--green-2)' : 'var(--red-2)';
-        html += '<div style="padding:8px 0;border-bottom:1px solid #222;">' +
-          '<div style="display:flex;justify-content:space-between;">' +
-            '<strong style="color:' + color + ';">' + (typeMap[t.type] || t.type) + '</strong>' +
-            '<span style="font-weight:700;">' + Utils.fmtMoney(t.amount) + '</span>' +
+    if (transactions.length === 0) {
+      html += '<div class="empty"><div class="ico">📋</div>لا توجد حركات</div>';
+    } else {
+      html += '<div style="max-height:600px;overflow-y:auto;">';
+      for (const t of transactions) {
+        html += '<div style="padding:12px;border-bottom:1px solid #222;border-right:3px solid ' + t.color + ';margin-bottom:8px;background:rgba(0,0,0,.2);border-radius:8px;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+            '<strong style="color:' + t.color + ';font-size:14px;">' + t.icon + ' ' + Utils.esc(t.type) + '</strong>' +
+            '<span style="font-size:11px;color:#888;">' + Utils.fmtDate(t.date) + '</span>' +
           '</div>' +
-          '<div style="font-size:11px;color:#888;">' + Utils.fmtDate(t.date) + (t.reason ? ' | ' + Utils.esc(t.reason) : '') + '</div>' +
+          '<div style="font-size:12px;color:#aaa;margin-bottom:6px;">🔖 ' + Utils.esc(t.ref || '-') + (t.method ? ' | ' + Utils.esc(t.method) : '') + '</div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:13px;">' +
+            '<span style="color:var(--red-2);">مدين: ' + Utils.fmtMoney(t.debit) + '</span>' +
+            '<span style="color:var(--green-2);">دائن: ' + Utils.fmtMoney(t.credit) + '</span>' +
+          '</div>' +
+          (t.remaining ? '<div style="font-size:11px;color:var(--orange-2);margin-top:4px;">⚠️ متبقي: ' + Utils.fmtMoney(t.remaining) + '</div>' : '') +
         '</div>';
       }
       html += '</div>';
     }
+    html += '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📤 أزرار التصدير والطباعة
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card"><h3>📤 تصدير الكشف</h3>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+        '<button class="btn btn-primary" onclick="Statements.exportPartnerStatement()">📄 PDF</button>' +
+        '<button class="btn btn-info" onclick="Statements.printPartnerStatement()">🖨️ طباعة</button>' +
+      '</div>' +
+    '</div>';
+
+    const listEl = document.getElementById('stmtPartnerList');
+    if (listEl) listEl.innerHTML = html;
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📄 كشف حساب الموظف
+  // ═══════════════════════════════════════════════════════════════════
+  loadEmployee() {
+    const selectEl = document.getElementById('stmtEmp');
+    const uid = selectEl ? selectEl.value : '';
+    if (!uid) {
+      const listEl = document.getElementById('stmtEmpList');
+      if (listEl) listEl.innerHTML = '<div class="empty"><div class="ico">👤</div>اختر موظف</div>';
+      return;
+    }
+
+    Statements._currentEmployeeId = uid;
+    const emp = (cache.employees || []).find(function (x) { return x.uid === uid; });
+    if (!emp) return;
+
+    const att = (cache.attendance || []).filter(function (a) { return a.employee_uid === uid; })
+      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    const leaves = (cache.leaves || []).filter(function (l) { return l.employee_uid === uid; })
+      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    const payrolls = (cache.payroll || []).filter(function (p) { return p.employee_uid === uid; })
+      .sort(function (a, b) { return (b.month || '').localeCompare(a.month || ''); });
+    const txs = (cache.employee_transactions || []).filter(function (t) { return t.employee_uid === uid; })
+      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+
+    // ⚠️ حساب الإجماليات
+    const totalPresentDays = att.filter(function (a) { return a.status === 'present' && a.check_in; }).length;
+    const totalLeaveDays = att.filter(function (a) { return a.status === 'leave'; }).length;
+    const totalWorkHours = att.reduce(function (s, a) { return s + (Number(a.work_hours) || 0); }, 0);
+    const totalLateMinutes = att.reduce(function (s, a) { return s + (Number(a.minutes_late) || 0); }, 0);
+    const totalLateDeduction = att.reduce(function (s, a) { return s + (Number(a.late_deduction) || 0); }, 0);
+    const totalSalaryPaid = payrolls.filter(function (p) { return p.status === 'paid'; })
+      .reduce(function (s, p) { return s + (Number(p.net_salary) || 0); }, 0);
+    const totalAdvances = txs.filter(function (t) { return t.type === 'advance'; })
+      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+    const totalBonuses = txs.filter(function (t) { return t.type === 'bonus'; })
+      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+    const totalDeductions = txs.filter(function (t) { return t.type === 'deduction'; })
+      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+
+    let html = '';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 👤 بطاقة الموظف
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card" style="border-right:4px solid var(--gold);">' +
+      '<h3>👤 ' + Utils.esc(emp.name) + '</h3>' +
+      '<p style="font-size:12px;color:var(--text-2);">💼 ' + Utils.esc(emp.job_title || '-') + '</p>' +
+      '<p style="font-size:12px;color:var(--text-2);">📞 ' + Utils.esc(emp.phone || '-') + '</p>' +
+      '<p style="font-size:12px;color:var(--text-2);">🎭 ' + Utils.esc(PERMISSIONS[emp.role] ? PERMISSIONS[emp.role].label : emp.role) + '</p>' +
+      '<div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid var(--gold);margin-top:10px;">' +
+        '<span style="font-size:14px;color:var(--gold);">الراتب الأساسي:</span>' +
+        '<strong style="color:var(--gold);font-size:18px;">' + Utils.fmtMoney(emp.basic_salary) + '</strong>' +
+      '</div>' +
+    '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📊 ملخص شامل
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="stats-grid" style="padding:0;">' +
+      '<div class="stat-card green"><div class="label">أيام الحضور</div><div class="value">' + totalPresentDays + '</div></div>' +
+      '<div class="stat-card blue"><div class="label">أيام الإجازات</div><div class="value">' + totalLeaveDays + '</div></div>' +
+      '<div class="stat-card"><div class="label">ساعات العمل</div><div class="value">' + totalWorkHours.toFixed(1) + '</div></div>' +
+      '<div class="stat-card orange"><div class="label">دقائق التأخير</div><div class="value">' + totalLateMinutes + '</div></div>' +
+      '<div class="stat-card red"><div class="label">خصم التأخير</div><div class="value">' + Utils.fmtNum(totalLateDeduction) + '</div></div>' +
+      '<div class="stat-card green"><div class="label">المرتبات المدفوعة</div><div class="value">' + Utils.fmtNum(totalSalaryPaid) + '</div></div>' +
+      '<div class="stat-card red"><div class="label">إجمالي السلف</div><div class="value">' + Utils.fmtNum(totalAdvances) + '</div></div>' +
+      '<div class="stat-card green"><div class="label">إجمالي المكافآت</div><div class="value">' + Utils.fmtNum(totalBonuses) + '</div></div>' +
+      '<div class="stat-card red"><div class="label">إجمالي الخصومات</div><div class="value">' + Utils.fmtNum(totalDeductions) + '</div></div>' +
+    '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 💰 المرتبات
+    // ═══════════════════════════════════════════════════════════════
+    if (payrolls.length > 0) {
+      html += '<div class="card"><h3>💰 المرتبات (' + payrolls.length + ')</h3>' +
+        '<div style="max-height:300px;overflow-y:auto;">';
+      for (const p of payrolls) {
+        const statusColor = p.status === 'paid' ? 'var(--green-2)' : 'var(--orange-2)';
+        const statusText = p.status === 'paid' ? 'مدفوع ✓' : 'مستحق';
+        html += '<div style="padding:10px;border-bottom:1px solid #222;">' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
+            '<strong style="color:var(--gold);">' + Utils.esc(p.month) + '</strong>' +
+            '<span style="color:' + statusColor + ';font-size:12px;font-weight:700;">' + statusText + '</span>' +
+          '</div>' +
+          '<div style="font-size:13px;">الصافي: <strong>' + Utils.fmtMoney(p.net_salary) + '</strong></div>' +
+          '<div style="font-size:11px;color:#888;margin-top:4px;">غياب: ' + (p.absence_days || 0) + ' يوم | تأخير: ' + (p.late_minutes || 0) + ' د</div>' +
+        '</div>';
+      }
+      html += '</div></div>';
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 💵 السلف والمكافآت
+    // ═══════════════════════════════════════════════════════════════
+    if (txs.length > 0) {
+      html += '<div class="card"><h3>💵 السلف والمكافآت (' + txs.length + ')</h3>' +
+        '<div style="max-height:300px;overflow-y:auto;">';
+      const typeMap = { 'advance': { label: '💰 سلفة', color: 'var(--orange-2)' }, 'bonus': { label: '🎁 مكافأة', color: 'var(--green-2)' }, 'deduction': { label: '➖ خصم', color: 'var(--red-2)' } };
+      for (const t of txs) {
+        const typeInfo = typeMap[t.type] || { label: t.type, color: '#888' };
+        html += '<div style="padding:10px;border-bottom:1px solid #222;">' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
+            '<strong style="color:' + typeInfo.color + ';">' + typeInfo.label + '</strong>' +
+            '<strong>' + Utils.fmtMoney(t.amount) + '</strong>' +
+          '</div>' +
+          '<div style="font-size:11px;color:#888;">' + Utils.fmtDate(t.date) + (t.reason ? ' | ' + Utils.esc(t.reason) : '') + '</div>' +
+          (t.paid ? '<div style="font-size:11px;color:var(--green-2);margin-top:2px;">✓ مسددة</div>' : '<div style="font-size:11px;color:var(--orange-2);margin-top:2px;">⚠️ مستحقة</div>') +
+        '</div>';
+      }
+      html += '</div></div>';
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📅 الحضور (آخر 30 يوم)
+    // ═══════════════════════════════════════════════════════════════
+    if (att.length > 0) {
+      html += '<div class="card"><h3>📅 الحضور (آخر 30)</h3>' +
+        '<div style="max-height:300px;overflow-y:auto;">';
+      for (const a of att.slice(0, 30)) {
+        let statusText = '', statusColor = '#888';
+        if (a.status === 'leave') { statusText = '📅 إجازة'; statusColor = 'var(--blue-2)'; }
+        else if (a.check_in && a.check_out) { statusText = '✓ ' + (a.work_hours || 0) + ' ساعة'; statusColor = 'var(--green-2)'; }
+        else if (a.check_in) { statusText = '✓ حاضر'; statusColor = 'var(--green-2)'; }
+        else { statusText = 'لم يحضر'; }
+        const lateText = (a.minutes_late > 0) ? ' <span style="color:var(--orange-2);font-size:11px;">(تأخير ' + a.minutes_late + ' د)</span>' : '';
+        html += '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;font-size:13px;">' +
+          '<span>' + a.date + lateText + '</span>' +
+          '<span style="color:' + statusColor + ';">' + statusText + '</span>' +
+        '</div>';
+      }
+      html += '</div></div>';
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📤 تصدير
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card"><h3>📤 تصدير الكشف</h3>' +
+      '<button class="btn btn-primary btn-full" onclick="Statements.exportEmployeeStatement()">📄 تصدير كشف الموظف</button>' +
+    '</div>';
+
     const listEl = document.getElementById('stmtEmpList');
     if (listEl) listEl.innerHTML = html;
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 💰 كشف الخزينة
+  // ═══════════════════════════════════════════════════════════════════
   loadCash() {
     const fromEl = document.getElementById('stmtCashFrom');
     const toEl = document.getElementById('stmtCashTo');
+    const accEl = document.getElementById('stmtCashAccount');
+
     const from = fromEl ? fromEl.value : '';
     const to = toEl ? toEl.value : '';
+    const accountFilter = accEl ? accEl.value : 'all';
 
-    // ⚠️ فلترة الحركات حسب التاريخ
-    const allCash = (cache.cash_transactions || [])
-      .filter(function (c) {
-        if (!from || !to) return true;
+    Statements._currentCashFilters = { from, to, account: accountFilter };
+
+    // ⚠️ فلترة الحركات
+    let allCash = (cache.cash_transactions || []).slice();
+
+    if (from && to) {
+      allCash = allCash.filter(function (c) {
         return c.date && c.date.split('T')[0] >= from && c.date.split('T')[0] <= to;
-      })
-      .sort(function (a, b) {
-        return (a.date || '').localeCompare(b.date || '');
       });
+    }
+
+    if (accountFilter && accountFilter !== 'all') {
+      allCash = allCash.filter(function (c) {
+        const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+        return accId === accountFilter;
+      });
+    }
+
+    allCash.sort(function (a, b) {
+      return (a.date || '').localeCompare(b.date || '');
+    });
 
     // ⚠️ تجميع حسب الحساب
     const byAccount = {};
@@ -7314,120 +7596,215 @@ const Statements = {
       byAccount[accId].transactions.push(c);
     }
 
-    // ⚠️ حساب الأرصدة
     for (const id in byAccount) {
       byAccount[id].balance = byAccount[id].in - byAccount[id].out;
     }
 
-    // ⚠️ ترتيب الحسابات
     const accountsArr = Object.values(byAccount).sort(function (a, b) {
       return (a.account.order || 99) - (b.account.order || 99);
     });
 
-    // ⚠️ بناء HTML
-    let html = '';
-
-    // ============ ملخص الفترة ============
-    html += '<div class="card">' +
-      '<h3>📊 ملخص الفترة</h3>' +
-      '<p style="font-size:12px;color:#aaa;">' +
-        (from && to
-          ? 'من ' + Utils.esc(from) + ' إلى ' + Utils.esc(to)
-          : 'كل الحركات') +
-      '</p>' +
-      '<div style="display:flex;justify-content:space-between;padding:8px 0;">' +
-        '<span>إجمالي الواردات:</span>' +
-        '<strong style="color:var(--green-2);">' + Utils.fmtMoney(totalIn) + '</strong>' +
-      '</div>' +
-      '<div style="display:flex;justify-content:space-between;padding:8px 0;">' +
-        '<span>إجمالي الصادرات:</span>' +
-        '<strong style="color:var(--red-2);">' + Utils.fmtMoney(totalOut) + '</strong>' +
-      '</div>' +
-      '<div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid var(--gold);font-weight:700;color:var(--gold);">' +
-        '<span>الصافي:</span>' +
-        '<strong>' + Utils.fmtMoney(totalIn - totalOut) + '</strong>' +
-      '</div>' +
-    '</div>';
-
-    // ============ أرصدة الحسابات ============
     const accountsWithActivity = accountsArr.filter(function (item) {
       return item.in > 0 || item.out > 0;
     });
 
-    if (accountsWithActivity.length > 0) {
-      html += '<div class="card">' +
-        '<h3>💰 أرصدة الحسابات</h3>';
+    let html = '';
 
+    // ═══════════════════════════════════════════════════════════════
+    // 📊 ملخص الفترة
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card">' +
+      '<h3>📊 ملخص الفترة</h3>' +
+      '<p style="font-size:12px;color:#aaa;margin-bottom:10px;">' +
+        (from && to ? 'من ' + Utils.esc(from) + ' إلى ' + Utils.esc(to) : 'كل الفترات') +
+        (accountFilter !== 'all' ? ' | الحساب: ' + Utils.esc(getAccount(accountFilter).label) : ' | كل الحسابات') +
+      '</p>' +
+      '<div class="stats-grid" style="padding:0;">' +
+        '<div class="stat-card green"><div class="label">إجمالي الواردات</div><div class="value">' + Utils.fmtNum(totalIn) + '</div></div>' +
+        '<div class="stat-card red"><div class="label">إجمالي الصادرات</div><div class="value">' + Utils.fmtNum(totalOut) + '</div></div>' +
+        '<div class="stat-card blue" style="grid-column:span 2;"><div class="label">الصافي</div><div class="value" style="font-size:22px;">' + Utils.fmtNum(totalIn - totalOut) + '</div></div>' +
+      '</div>' +
+    '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 💰 أرصدة الحسابات
+    // ═══════════════════════════════════════════════════════════════
+    if (accountsWithActivity.length > 0) {
+      html += '<div class="card"><h3>💰 أرصدة الحسابات</h3>';
       for (const item of accountsWithActivity) {
         const acc = item.account;
         const icon = acc.icon || '💰';
         const label = acc.label || acc.id;
         const color = acc.color || 'var(--gold)';
-
-        html += '<div style="padding:10px 0;border-bottom:1px solid #222;">' +
+        html += '<div style="padding:12px;border-bottom:1px solid #222;border-right:3px solid ' + color + ';border-radius:8px;margin-bottom:6px;background:rgba(0,0,0,.2);">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;">' +
             '<div>' +
-              '<div style="color:' + color + ';font-weight:700;font-size:14px;">' + icon + ' ' + Utils.esc(label) + '</div>' +
-              '<div style="font-size:11px;color:#888;margin-top:2px;">وارد: +' + Utils.fmtNum(item.in) + ' | صادر: -' + Utils.fmtNum(item.out) + '</div>' +
+              '<div style="color:' + color + ';font-weight:700;font-size:15px;">' + icon + ' ' + Utils.esc(label) + '</div>' +
+              '<div style="font-size:11px;color:#888;margin-top:4px;">وارد: +' + Utils.fmtNum(item.in) + ' | صادر: -' + Utils.fmtNum(item.out) + '</div>' +
             '</div>' +
             '<div style="text-align:left;">' +
-              '<div style="color:' + color + ';font-weight:800;font-size:16px;">' + Utils.fmtNum(item.balance) + '</div>' +
+              '<div style="color:' + color + ';font-weight:800;font-size:20px;">' + Utils.fmtNum(item.balance) + '</div>' +
               '<div style="font-size:10px;color:#666;">' + CURRENCY + '</div>' +
             '</div>' +
           '</div>' +
         '</div>';
       }
-
       html += '</div>';
     }
 
-    // ============ تفاصيل الحركات لكل حساب ============
-    if (accountsWithActivity.length > 0) {
-      for (const item of accountsWithActivity) {
-        const acc = item.account;
+    // ═══════════════════════════════════════════════════════════════
+    // 📜 الحركات
+    // ═══════════════════════════════════════════════════════════════
+    if (allCash.length > 0) {
+      html += '<div class="card"><h3>📜 الحركات (' + allCash.length + ')</h3>' +
+        '<div style="max-height:500px;overflow-y:auto;">';
+      for (const c of allCash.slice(0, 200)) {
+        const accId = c.account_id || methodToAccountId(c.payment_method || 'نقدي');
+        const acc = getAccount(accId);
         const icon = acc.icon || '💰';
-        const label = acc.label || acc.id;
-        const color = acc.color || 'var(--gold)';
-
-        html += '<div class="card">' +
-          '<h3 style="color:' + color + ';">' + icon + ' ' + Utils.esc(label) + '</h3>';
-
-        // عرض آخر 50 حركة
-        const txns = item.transactions.slice(0, 50);
-        for (const c of txns) {
-          html += '<div class="list-item" style="margin:4px 0;">' +
-            '<div class="info">' +
-              '<h4 style="color:' + (c.type === 'in' ? 'var(--green-2)' : 'var(--red-2)') + ';font-size:13px;">' +
-                (c.type === 'in' ? '↓ وارد' : '↑ صادر') + ' - ' + Utils.fmtMoney(c.amount) +
-              '</h4>' +
-              '<p style="font-size:12px;">' + Utils.esc(c.description || '-') + '</p>' +
-              '<p style="font-size:11px;color:#888;">' +
-                Utils.fmtDate(c.date) +
-                (c.reference ? ' | ' + Utils.esc(c.reference) : '') +
-              '</p>' +
-            '</div>' +
-          '</div>';
-        }
-
-        if (item.transactions.length > 50) {
-          html += '<p style="text-align:center;color:#666;font-size:11px;padding:8px;">' +
-            '(يتم عرض 50 حركة من إجمالي ' + item.transactions.length + ')' +
-          '</p>';
-        }
-
-        html += '</div>';
+        const label = acc.label || accId;
+        const isIn = c.type === 'in';
+        html += '<div style="padding:10px;border-bottom:1px solid #222;border-right:3px solid ' + (isIn ? 'var(--green-2)' : 'var(--red-2)') + ';border-radius:6px;margin-bottom:6px;">' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
+            '<strong style="color:' + (isIn ? 'var(--green-2)' : 'var(--red-2)') + ';font-size:13px;">' +
+              (isIn ? '↓ وارد' : '↑ صادر') + ' - ' + Utils.fmtMoney(c.amount) +
+            '</strong>' +
+            '<span style="font-size:11px;color:#888;">' + Utils.fmtDate(c.date) + '</span>' +
+          '</div>' +
+          '<div style="font-size:12px;color:#ccc;margin-bottom:4px;">' + Utils.esc(c.description || '-') + '</div>' +
+          '<div style="font-size:11px;color:var(--gold);">' + icon + ' ' + Utils.esc(label) + (c.reference ? ' | ' + Utils.esc(c.reference) : '') + '</div>' +
+        '</div>';
       }
+      if (allCash.length > 200) {
+        html += '<p style="text-align:center;color:#666;font-size:11px;padding:10px;">(يتم عرض 200 حركة من إجمالي ' + allCash.length + ')</p>';
+      }
+      html += '</div></div>';
+    } else {
+      html += '<div class="card"><div class="empty"><div class="ico">💰</div>لا توجد حركات في هذه الفترة</div></div>';
     }
 
-    // ============ لو مفيش حركات ============
-    if (allCash.length === 0) {
-      html = '<div class="card">' +
-        '<div class="empty"><div class="ico">💰</div>لا توجد حركات في هذه الفترة</div>' +
-      '</div>';
-    }
+    // ═══════════════════════════════════════════════════════════════
+    // 📤 تصدير
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="card"><h3>📤 تصدير الكشف</h3>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+        '<button class="btn btn-primary" onclick="Statements.exportCashStatement()">📄 PDF</button>' +
+        '<button class="btn btn-info" onclick="Statements.printCashStatement()">🖨️ طباعة</button>' +
+      '</div>' +
+    '</div>';
 
     const el = document.getElementById('stmtCashList');
     if (el) el.innerHTML = html;
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 📤 تصدير كشف العميل (PDF)
+  // ═══════════════════════════════════════════════════════════════════
+  async exportPartnerStatement() {
+    const id = Statements._currentPartnerId;
+    if (!id) return Toast.show('❌ اختر عميل أولاً', 'error');
+
+    const p = (cache.partners || []).find(function (x) { return x.id === id; });
+    if (!p) return;
+
+    // ⚠️ نبني مستند PDF
+    const doc = {
+      invoice_no: 'STMT-' + Date.now(),
+      date: Utils.nowISO(),
+      customer_name: p.name,
+      party_name: p.name,
+      employee_name: State.currentEmployee.name,
+      is_statement: true
+    };
+
+    // ⚠️ نبني عناصر من الحركات
+    const sales = (cache.sales_invoices || []).filter(function (s) { return s.customer_id === id; });
+    const purchases = (cache.purchase_invoices || []).filter(function (s) { return s.supplier_id === id; });
+    const vouchers = (cache.vouchers || []).filter(function (v) { return v.partner_id === id; });
+
+    const items = [];
+    for (const s of sales) items.push({ product_name: 'فاتورة مبيعات ' + s.invoice_no + ' (' + Utils.fmtDate(s.date) + ')', quantity: 1, price: Number(s.total) || 0, total: Number(s.total) || 0 });
+    for (const pu of purchases) items.push({ product_name: 'فاتورة مشتريات ' + pu.invoice_no + ' (' + Utils.fmtDate(pu.date) + ')', quantity: 1, price: Number(pu.total) || 0, total: Number(pu.total) || 0 });
+    for (const v of vouchers) items.push({ product_name: (v.type === 'receipt' ? 'سند قبض ' : 'سند دفع ') + v.voucher_no + ' (' + Utils.fmtDate(v.date) + ')', quantity: 1, price: Number(v.amount) || 0, total: Number(v.amount) || 0 });
+
+    await Export.toPDF(doc, items, 'sales');
+  },
+
+  async printPartnerStatement() {
+    const id = Statements._currentPartnerId;
+    if (!id) return Toast.show('❌ اختر عميل أولاً', 'error');
+    Toast.show('⏳ جاري الطباعة...', 'info');
+    await Statements.exportPartnerStatement();
+  },
+
+  async exportEmployeeStatement() {
+    const uid = Statements._currentEmployeeId;
+    if (!uid) return Toast.show('❌ اختر موظف أولاً', 'error');
+
+    const emp = (cache.employees || []).find(function (x) { return x.uid === uid; });
+    if (!emp) return;
+
+    const payrolls = (cache.payroll || []).filter(function (p) { return p.employee_uid === uid; });
+
+    const doc = {
+      invoice_no: 'EMP-STMT-' + Date.now(),
+      date: Utils.nowISO(),
+      employee_name: emp.name,
+      month: 'كشف شامل',
+      basic_salary: emp.basic_salary,
+      housing_allowance: emp.housing_allowance,
+      transport_allowance: emp.transport_allowance,
+      bonuses: payrolls.reduce(function (s, p) { return s + (Number(p.bonuses) || 0); }, 0),
+      absence_deduction: payrolls.reduce(function (s, p) { return s + (Number(p.absence_deduction) || 0); }, 0),
+      late_deduction: payrolls.reduce(function (s, p) { return s + (Number(p.late_deduction) || 0); }, 0),
+      insurance_deduction: emp.insurance_deduction,
+      tax_deduction: emp.tax_deduction,
+      net_salary: payrolls.reduce(function (s, p) { return s + (Number(p.net_salary) || 0); }, 0)
+    };
+
+    await Export.toPDF(doc, [], 'payroll');
+  },
+
+  async exportCashStatement() {
+    const f = Statements._currentCashFilters;
+    let cash = (cache.cash_transactions || []).slice();
+    if (f.from && f.to) {
+      cash = cash.filter(function (c) { return c.date && c.date.split('T')[0] >= f.from && c.date.split('T')[0] <= f.to; });
+    }
+    if (f.account && f.account !== 'all') {
+      cash = cash.filter(function (c) { return (c.account_id || methodToAccountId(c.payment_method || 'نقدي')) === f.account; });
+    }
+
+    const items = cash.map(function (c) {
+      return {
+        product_name: (c.type === 'in' ? '↓ وارد' : '↑ صادر') + ' - ' + (c.description || '-'),
+        quantity: 1,
+        price: Number(c.amount) || 0,
+        total: Number(c.amount) || 0
+      };
+    });
+
+    const totalIn = cash.filter(function (c) { return c.type === 'in'; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
+    const totalOut = cash.filter(function (c) { return c.type === 'out'; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
+
+    const doc = {
+      invoice_no: 'CASH-STMT-' + Date.now(),
+      date: Utils.nowISO(),
+      party_name: 'كشف حركة الخزينة',
+      subtotal: totalIn,
+      discount: totalOut,
+      tax: 0,
+      total: totalIn - totalOut,
+      paid: totalIn,
+      remaining: totalOut
+    };
+
+    await Export.toPDF(doc, items, 'sales');
+  },
+
+  async printCashStatement() {
+    Toast.show('⏳ جاري الطباعة...', 'info');
+    await Statements.exportCashStatement();
   }
 };
 
