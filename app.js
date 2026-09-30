@@ -1737,6 +1737,18 @@ async toPDF(doc, items, docType) {
     return Export.printHTML(html, 'dialog');
   }
 
+  // ⚠️ التحقق من البيانات
+  if (!doc) {
+    Toast.show('❌ المستند غير موجود', 'error');
+    return false;
+  }
+
+  if (!Array.isArray(items)) {
+    items = items ? Object.values(items) : [];
+  }
+
+  console.log('toPDF: docType=', docType, 'itemsCount=', items.length);
+
   let container = null;
 
   try {
@@ -1757,12 +1769,13 @@ async toPDF(doc, items, docType) {
     }
 
     // ⚠️ إنشاء حاوية حقيقية في الـ DOM
+    // ⚠️ مهم: في WebView، لازم العنصر يكون مرئي
     container = document.createElement('div');
     container.id = 'pdf-temp-container';
-    container.style.position = 'fixed';
+    container.style.position = 'absolute';
     container.style.top = '0';
     container.style.left = '0';
-    container.style.width = '302px';
+    container.style.width = '302px';         // 80mm
     container.style.minHeight = '100px';
     container.style.background = '#ffffff';
     container.style.color = '#000000';
@@ -1770,23 +1783,22 @@ async toPDF(doc, items, docType) {
     container.style.fontFamily = 'Cairo, Tahoma, sans-serif';
     container.style.fontSize = '11px';
     container.style.direction = 'rtl';
-    container.style.zIndex = '-999999';
-    container.style.opacity = '0.01';
-    container.style.pointerEvents = 'none';
-    container.style.overflow = 'hidden';
+    // ⚠️ شيلنا opacity و z-index السالبة — دي كانت بتخلي html2canvas ميرسمش
+    container.style.zIndex = '99999';
+    container.style.opacity = '1';
+    container.style.overflow = 'visible';
+    container.style.boxSizing = 'border-box';
     container.innerHTML = bodyContent;
 
     document.body.appendChild(container);
 
     // ⚠️ انتظار تحميل الخطوط والصور
     await new Promise(function (resolve) {
-      // انتظر تحميل الخطوط
       if (document.fonts && document.fonts.ready) {
         document.fonts.ready.then(function () {
-          // بعد الخطوط، انتظر الصور
           const images = container.querySelectorAll('img');
           if (images.length === 0) {
-            setTimeout(resolve, 400);
+            setTimeout(resolve, 500);
             return;
           }
           let loaded = 0;
@@ -1811,14 +1823,14 @@ async toPDF(doc, items, docType) {
               };
             }
           });
-          setTimeout(done, 2500);
+          setTimeout(done, 3000);
         });
       } else {
-        setTimeout(resolve, 600);
+        setTimeout(resolve, 800);
       }
     });
 
-    // ⚠️ استخدام html2pdf
+    // ⚠️ إعدادات PDF
     const options = {
       margin: [3, 3, 3, 3],
       filename: filename,
@@ -1832,16 +1844,7 @@ async toPDF(doc, items, docType) {
         scrollX: 0,
         scrollY: 0,
         width: 302,
-        windowWidth: 302,
-        onclone: function (clonedDoc) {
-          // ⚠️ تأكد إن الخط موجود في النسخة المستنسخة
-          const clonedContainer = clonedDoc.getElementById('pdf-temp-container');
-          if (clonedContainer) {
-            clonedContainer.style.opacity = '1';
-            clonedContainer.style.zIndex = '1';
-            clonedContainer.style.position = 'static';
-          }
-        }
+        windowWidth: 302
       },
       jsPDF: {
         unit: 'mm',
@@ -1851,6 +1854,7 @@ async toPDF(doc, items, docType) {
       pagebreak: { mode: ['css', 'legacy'] }
     };
 
+    // ⚠️ توليد PDF
     await html2pdf().set(options).from(container).save();
 
     Toast.show('✅ تم إنشاء PDF: ' + filename);
@@ -1864,6 +1868,7 @@ async toPDF(doc, items, docType) {
     return Export.printHTML(html, 'dialog');
 
   } finally {
+    // ⚠️ تنظيف الحاوية دايماً
     if (container && container.parentNode) {
       try {
         container.parentNode.removeChild(container);
@@ -1875,11 +1880,32 @@ async toPDF(doc, items, docType) {
 },
 
 toExcel(doc, items, docType) {
-  // ⚠️ لو مكتبة xlsx مش موجودة، نرجع للطريقة القديمة (CSV)
+  console.log('toExcel: START', { docType, itemsCount: items ? items.length : 0 });
+
+  // ⚠️ التحقق من المكتبة
   if (typeof XLSX === 'undefined') {
     console.warn('xlsx library not loaded, falling back to CSV');
+    Toast.show('⚠️ مكتبة Excel غير محمّلة — استخدام CSV', 'info');
     return Export.toCSV(doc, items, docType);
   }
+
+  // ⚠️ التحقق من المستند
+  if (!doc) {
+    Toast.show('❌ المستند غير موجود', 'error');
+    console.error('toExcel: doc is null');
+    return false;
+  }
+
+  // ⚠️ التحقق من الأصناف
+  if (!Array.isArray(items)) {
+    items = items ? Object.values(items) : [];
+  }
+
+  console.log('toExcel: after validation', {
+    hasDoc: !!doc,
+    itemsCount: items.length,
+    firstItem: items[0]
+  });
 
   try {
     // ⚠️ اسم الملف
@@ -1905,10 +1931,9 @@ toExcel(doc, items, docType) {
     const partyName = doc.customer_name || doc.supplier_name || doc.party_name ||
                       doc.employee_name || '-';
 
-    // ⚠️ بناء ورقة العمل (Worksheet)
+    // ⚠️ بناء البيانات
     const rows = [];
 
-    // رأس المستند
     rows.push(['شركة البسملة - ' + (titles[docType] || 'مستند')]);
     rows.push([]);
     rows.push(['رقم المستند', docNo]);
@@ -1917,7 +1942,6 @@ toExcel(doc, items, docType) {
     rows.push(['الموظف', doc.employee_name || '-']);
     rows.push([]);
 
-    // تفاصيل حسب النوع
     if (docType === 'payroll') {
       rows.push(['البند', 'القيمة']);
       rows.push(['الراتب الأساسي', Number(doc.basic_salary) || 0]);
@@ -1937,16 +1961,15 @@ toExcel(doc, items, docType) {
       rows.push(['الحساب', doc.account_label || '-']);
       rows.push(['البيان', doc.description || '-']);
     } else {
-      // فواتير بيع / شراء / مرتجعات
+      // ⚠️ فواتير بيع / شراء / مرتجعات
       rows.push(['م', 'الصنف', 'الكمية', 'السعر', 'الإجمالي']);
 
-      const safeItems = Array.isArray(items) ? items : [];
-
-      if (safeItems.length === 0) {
-        rows.push(['-', 'لا توجد أصناف', 0, 0, 0]);
+      if (items.length === 0) {
+        rows.push(['-', 'لا توجد أصناف مسجلة', 0, 0, 0]);
+        console.warn('toExcel: items array is empty!');
       } else {
-        for (let i = 0; i < safeItems.length; i++) {
-          const it = safeItems[i] || {};
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i] || {};
           rows.push([
             i + 1,
             it.product_name || it.name || 'صنف',
@@ -1978,10 +2001,11 @@ toExcel(doc, items, docType) {
     rows.push(['تم التصدير', new Date().toLocaleString('ar-EG')]);
     rows.push(['الموظف', State.currentEmployee ? State.currentEmployee.name : '-']);
 
+    console.log('toExcel: rows built', rows.length, 'rows');
+
     // ⚠️ إنشاء الـ Worksheet
     const ws = XLSX.utils.aoa_to_sheet(rows);
 
-    // ⚠️ ضبط عرض الأعمدة
     ws['!cols'] = [
       { wch: 8 },
       { wch: 30 },
@@ -1994,18 +2018,87 @@ toExcel(doc, items, docType) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'المستند');
 
-    // ⚠️ تحميل الملف
-    XLSX.writeFile(wb, filename);
+    // ⚠️ توليد الملف كـ array (أكثر أماناً من writeFile)
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+
+    // ⚠️ إنشاء Blob
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+
+    // ⚠️ محاولة التنزيل بأكثر من طريقة
+    Export._downloadFile(blob, filename);
 
     Toast.show('✅ تم تحميل ملف Excel: ' + filename);
     Utils.vibrate(80);
+
+    console.log('toExcel: SUCCESS');
     return true;
 
   } catch (e) {
     console.error('Excel generation failed:', e);
-    Toast.show('⚠️ فشل توليد Excel — استخدام CSV', 'error');
+    Toast.show('⚠️ فشل توليد Excel: ' + e.message, 'error');
     return Export.toCSV(doc, items, docType);
   }
+},
+
+// ⚠️ دالة مساعدة لتنزيل الملف (تعمل في المتصفح والـ APK)
+_downloadFile(blob, filename) {
+  // ⚠️ الطريقة 1: Blob + a.download (المتصفحات الحديثة)
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      try {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {}
+    }, 500);
+    console.log('_downloadFile: SUCCESS via Blob');
+    return true;
+  } catch (e) {
+    console.warn('_downloadFile: Blob method failed', e);
+  }
+
+  // ⚠️ الطريقة 2: Data URL (للتوافق مع WebView قديم)
+  try {
+    const reader = new FileReader();
+    reader.onload = function () {
+      const dataUrl = reader.result;
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () {
+        try { document.body.removeChild(a); } catch (err) {}
+      }, 500);
+    };
+    reader.readAsDataURL(blob);
+    console.log('_downloadFile: SUCCESS via DataURL');
+    return true;
+  } catch (e) {
+    console.warn('_downloadFile: DataURL method failed', e);
+  }
+
+  // ⚠️ الطريقة 3: Cordova File Plugin (لو موجود)
+  if (window.cordova && window.resolveLocalFileSystemURL) {
+    try {
+      // ⚠️ كود Cordova
+      console.log('_downloadFile: trying Cordova');
+      // TODO: تطبيق Cordova File Saving
+    } catch (e) {
+      console.warn('_downloadFile: Cordova method failed', e);
+    }
+  }
+
+  // ⚠️ لو فشل كل حاجة
+  Toast.show('⚠️ لم يتمكن المتصفح من حفظ الملف', 'error');
+  return false;
 },
 
 // ⚠️ دالة احتياطية (CSV) لو مكتبة xlsx مش موجودة
