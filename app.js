@@ -3222,8 +3222,13 @@ const Backup = {
 
 /* ═══════════════════════════════════════════════════════════════════
    18. Auth (Authentication + Company Management)
+   ⚠️ إصلاح: skipAutoLoad لمنع التدخل أثناء عرض معرّف الشركة
    ═══════════════════════════════════════════════════════════════════ */
 const Auth = {
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 1) doLogin
+  // ═══════════════════════════════════════════════════════════════════
   async doLogin() {
     const btn = document.getElementById('loginBtn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري الدخول...'; }
@@ -3251,6 +3256,9 @@ const Auth = {
     }
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 2) forgotPassword
+  // ═══════════════════════════════════════════════════════════════════
   async forgotPassword() {
     const emailEl = document.getElementById('loginEmail');
     const email = emailEl ? emailEl.value.trim() : '';
@@ -3262,6 +3270,9 @@ const Auth = {
     } catch (e) { App.showError('loginError', '❌ ' + e.message); }
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 3) doCreateCompany — [معدّلة] بـ _skipAutoLoad
+  // ═══════════════════════════════════════════════════════════════════
   async doCreateCompany() {
     const btn = document.getElementById('createBtn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري الإنشاء...'; }
@@ -3313,8 +3324,13 @@ const Auth = {
       localStorage.setItem('user_email', email);
       State.currentCompanyId = companyId;
       State.currentCompanyName = companyName;
+
+      // ⚠️ [إصلاح] نمنع onAuthStateChanged من التدخل قبل ما نشوف المعرّف
+      App._skipAutoLoad = true;
+
       const idEl = document.getElementById('companyIdValue');
       if (idEl) idEl.textContent = companyId;
+
       App.showScreen('screenShowCompanyId');
       Toast.show('✅ تم إنشاء الشركة');
     } catch (e) {
@@ -3328,6 +3344,9 @@ const Auth = {
     }
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 4) generateCompanyId
+  // ═══════════════════════════════════════════════════════════════════
   generateCompanyId() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let part1 = '', part2 = '';
@@ -3336,11 +3355,18 @@ const Auth = {
     return 'ALB-' + part1 + '-' + part2;
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 5) enterApp — [معدّلة] بمسح _skipAutoLoad
+  // ═══════════════════════════════════════════════════════════════════
   async enterApp() {
+    App._skipAutoLoad = false;
     if (!State.currentCompanyId) State.currentCompanyId = localStorage.getItem('company_id');
     await App.loadCompanyData();
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 6) doJoinCompany
+  // ═══════════════════════════════════════════════════════════════════
   async doJoinCompany() {
     const btn = document.getElementById('joinBtn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري الإرسال...'; }
@@ -3412,58 +3438,70 @@ const Auth = {
     }
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 7) watchApproval
+  // ═══════════════════════════════════════════════════════════════════
   watchApproval(uid) {
-  if (!State.currentCompanyId) return;
+    if (!State.currentCompanyId) return;
 
-  const ref = FBDB.ref('companies/' + State.currentCompanyId + '/employees/' + uid);
+    const ref = FBDB.ref('companies/' + State.currentCompanyId + '/employees/' + uid);
 
-  const callback = function (snap) {
-    if (snap.exists() && snap.val().active === true) {
-      // ⚠️ نشيل الـ listener بعد ما يوافق
-      ref.off('value', callback);
+    const callback = function (snap) {
+      if (snap.exists() && snap.val().active === true) {
+        ref.off('value', callback);
 
-      // ⚠️ نحدّث حالة الجهاز
-      FBDB.ref('companies/' + State.currentCompanyId + '/devices/' + State.deviceId).update({
-        approved: true,
-        status: 'approved',
-        approved_at: Utils.nowISO()
-      });
+        FBDB.ref('companies/' + State.currentCompanyId + '/devices/' + State.deviceId).update({
+          approved: true,
+          status: 'approved',
+          approved_at: Utils.nowISO()
+        });
 
-      Toast.show('✅ تمت الموافقة!');
+        Toast.show('✅ تمت الموافقة!');
 
-      // ⚠️ نعيد تحميل البيانات بعد لحظة
-      setTimeout(function () {
-        App.loadCompanyData();
-      }, 800);
-    }
-  };
+        setTimeout(function () {
+          App.loadCompanyData();
+        }, 800);
+      }
+    };
 
-  ref.on('value', callback);
-},
+    ref.on('value', callback);
+  },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 8) logout
+  // ═══════════════════════════════════════════════════════════════════
   async logout() {
-  if (State.currentEmployee && !confirm('تسجيل الخروج؟')) return;
+    if (State.currentEmployee && !confirm('تسجيل الخروج؟')) return;
 
-  try {
-    if (State.currentEmployee && State.companyRef) {
-      await Activity.log('logout', 'خروج: ' + State.currentEmployee.name);
-    }
-  } catch (e) { console.warn('Activity log on logout:', e); }
+    try {
+      if (State.currentEmployee && State.companyRef) {
+        await Activity.log('logout', 'خروج: ' + State.currentEmployee.name);
+      }
+    } catch (e) { console.warn('Activity log on logout:', e); }
 
-  await App.safeLogout('user_logout');
+    await App.safeLogout('user_logout');
   }
 };
 
 /* ═══════════════════════════════════════════════════════════════════
    19. App (Main Controller)
+   ⚠️ إصلاحات:
+   - skipAutoLoad لمنع التدخل أثناء عرض معرّف الشركة
+   - مسح cache عند logout
+   - debounce على refreshCurrentPage
    ═══════════════════════════════════════════════════════════════════ */
 const App = {
   _loadingCompany: false,
+  _skipAutoLoad: false,
+  _originalRefresh: null,
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 1) init
+  // ═══════════════════════════════════════════════════════════════════
   init() {
     State.deviceId = localStorage.getItem('device_id');
     if (!State.deviceId) {
-      State.deviceId = 'DEV-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 8)
+      State.deviceId = 'DEV-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 8);
       localStorage.setItem('device_id', State.deviceId);
     }
 
@@ -3483,37 +3521,45 @@ const App = {
     });
 
     FBAuth.onAuthStateChanged(async function (user) {
-  App.hideLoading();
+      App.hideLoading();
 
-  if (!user) {
-    State.currentUser = null;
-    State.currentEmployee = null;
-    State.companyRef = null;
-    State.listeners = [];
-    App.showScreen('screenWelcome');
-    return;
-  }
+      // ⚠️ [إصلاح] لو لسه في شاشة عرض معرّف الشركة، اخرج
+      if (App._skipAutoLoad) {
+        console.log('⏭️ Skipping auto-load (company just created)');
+        State.currentUser = user;
+        return;
+      }
 
-  State.currentUser = user;
+      if (!user) {
+        State.currentUser = null;
+        State.currentEmployee = null;
+        State.companyRef = null;
+        State.listeners = [];
+        App.showScreen('screenWelcome');
+        return;
+      }
 
-  if (App._loadingCompany) {
-    console.log('⏭️ loadCompanyData already in progress, skipping');
-    return;
-  }
+      State.currentUser = user;
 
-  const companyId = localStorage.getItem('company_id');
-  if (companyId) {
-    State.currentCompanyId = companyId;
-    App._loadingCompany = true;
-    try {
-      await App.loadCompanyData();
-    } finally {
-      App._loadingCompany = false;
-    }
-  } else {
-    App.findUserCompany(user.uid);
-  }
-});
+      if (App._loadingCompany) {
+        console.log('⏭️ loadCompanyData already in progress, skipping');
+        return;
+      }
+
+      const companyId = localStorage.getItem('company_id');
+      if (companyId) {
+        State.currentCompanyId = companyId;
+        App._loadingCompany = true;
+        try {
+          await App.loadCompanyData();
+        } finally {
+          App._loadingCompany = false;
+        }
+      } else {
+        App.findUserCompany(user.uid);
+      }
+    });
+
     window.addEventListener('popstate', App.handleBack);
     history.pushState({ page: 'home' }, '', '');
 
@@ -3528,17 +3574,26 @@ const App = {
     document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 2) hideLoading
+  // ═══════════════════════════════════════════════════════════════════
   hideLoading() {
     const el = document.getElementById('screenLoading');
     if (el) el.classList.add('hidden');
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 3) showScreen
+  // ═══════════════════════════════════════════════════════════════════
   showScreen(id) {
     document.querySelectorAll('.auth-screen').forEach(function (s) { s.classList.add('hidden'); });
     const el = document.getElementById(id);
     if (el) el.classList.remove('hidden');
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 4) showError
+  // ═══════════════════════════════════════════════════════════════════
   showError(elementId, msg) {
     const el = document.getElementById(elementId);
     if (!el) return;
@@ -3547,6 +3602,9 @@ const App = {
     setTimeout(function () { el.classList.add('hidden'); }, 6000);
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 5) copyCompanyId
+  // ═══════════════════════════════════════════════════════════════════
   copyCompanyId() {
     const el = document.getElementById('companyIdValue');
     const v = el ? el.textContent : '';
@@ -3555,6 +3613,9 @@ const App = {
     } else Toast.show('المعرّف: ' + v, 'info');
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 6) findUserCompany
+  // ═══════════════════════════════════════════════════════════════════
   async findUserCompany(uid) {
     try {
       const snap = await FBDB.ref('user_companies/' + uid).once('value');
@@ -3572,89 +3633,94 @@ const App = {
     }
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 7) loadCompanyData
+  // ═══════════════════════════════════════════════════════════════════
   async loadCompanyData() {
-  try {
-    const companyId = State.currentCompanyId || localStorage.getItem('company_id');
-    if (!companyId) {
-      return App.showScreen('screenWelcome');
-    }
-    State.currentCompanyId = companyId;
-    State.companyRef = FBDB.ref('companies/' + companyId);
+    try {
+      const companyId = State.currentCompanyId || localStorage.getItem('company_id');
+      if (!companyId) {
+        return App.showScreen('screenWelcome');
+      }
+      State.currentCompanyId = companyId;
+      State.companyRef = FBDB.ref('companies/' + companyId);
 
-    const infoSnap = await State.companyRef.child('info').once('value');
-    if (!infoSnap.exists()) {
-      Toast.show('الشركة غير موجودة', 'error');
-      return await App.safeLogout('company_not_found');
-    }
-    const companyInfo = infoSnap.val();
-    State.currentCompanyName = companyInfo.name || 'شركة';
+      const infoSnap = await State.companyRef.child('info').once('value');
+      if (!infoSnap.exists()) {
+        Toast.show('الشركة غير موجودة', 'error');
+        return await App.safeLogout('company_not_found');
+      }
+      const companyInfo = infoSnap.val();
+      State.currentCompanyName = companyInfo.name || 'شركة';
 
-    const uid = State.currentUser.uid;
-    const empSnap = await State.companyRef.child('employees/' + uid).once('value');
-    if (!empSnap.exists()) {
-      const reqSnap = await State.companyRef.child('pending_requests/' + uid).once('value');
-      if (reqSnap.exists() && reqSnap.val().status === 'pending') {
+      const uid = State.currentUser.uid;
+      const empSnap = await State.companyRef.child('employees/' + uid).once('value');
+      if (!empSnap.exists()) {
+        const reqSnap = await State.companyRef.child('pending_requests/' + uid).once('value');
+        if (reqSnap.exists() && reqSnap.val().status === 'pending') {
+          App.showScreen('screenPendingApproval');
+          Auth.watchApproval(uid);
+          return;
+        }
+        Toast.show('لا يمكن الوصول لهذه الشركة', 'error');
+        return await App.safeLogout('no_access');
+      }
+      State.currentEmployee = empSnap.val();
+      if (State.currentEmployee.active !== true) {
         App.showScreen('screenPendingApproval');
         Auth.watchApproval(uid);
         return;
       }
-      Toast.show('لا يمكن الوصول لهذه الشركة', 'error');
-      return await App.safeLogout('no_access');
+
+      try {
+        await State.companyRef.child('devices/' + State.deviceId).update({
+          last_seen: Utils.nowISO(), user_uid: uid,
+          user_name: State.currentEmployee.name, approved: true, status: 'approved'
+        });
+      } catch (e) { console.warn('device update (non-critical):', e); }
+
+      document.querySelectorAll('.auth-screen').forEach(function (s) { s.classList.add('hidden'); });
+      const mainApp = document.getElementById('mainApp');
+      if (mainApp) mainApp.classList.remove('hidden');
+
+      const titleEl = document.getElementById('appTitle');
+      if (titleEl) titleEl.textContent = '🏪 ' + State.currentCompanyName;
+
+      const userEl = document.getElementById('userInfo');
+      if (userEl) {
+        userEl.textContent = State.currentEmployee.name + ' - ' +
+          (PERMISSIONS[State.currentEmployee.role] ? PERMISSIONS[State.currentEmployee.role].label : State.currentEmployee.role);
+      }
+
+      const compEl = document.getElementById('companyInfo');
+      if (compEl) compEl.textContent = 'معرّف الشركة: ' + State.currentCompanyId;
+
+      const devEl = document.getElementById('deviceLabel');
+      if (devEl) devEl.textContent = '📱 ' + State.deviceId.substr(-6);
+
+      const adminTools = document.getElementById('adminTools');
+      if (adminTools) adminTools.style.display = can('data_clear') ? 'block' : 'none';
+
+      App.startDataListeners();
+      await App.loadCacheFromLocal();
+      Menu.render();
+      App.openPage('home');
+      Sync.updateBar();
+      await Activity.log('login', 'دخول: ' + State.currentEmployee.name);
+      App.watchDeviceApproval();
+      App.watchEmployeeStatus();
+    } catch (e) {
+      console.error('❌ loadCompanyData fatal error:', e);
+      Toast.show('خطأ في تحميل البيانات: ' + (e.message || 'غير معروف'), 'error');
+      setTimeout(function () {
+        App.safeLogout('load_error');
+      }, 2000);
     }
-    State.currentEmployee = empSnap.val();
-    if (State.currentEmployee.active !== true) {
-      App.showScreen('screenPendingApproval');
-      Auth.watchApproval(uid);
-      return;
-    }
+  },
 
-    try {
-      await State.companyRef.child('devices/' + State.deviceId).update({
-        last_seen: Utils.nowISO(), user_uid: uid,
-        user_name: State.currentEmployee.name, approved: true, status: 'approved'
-      });
-    } catch (e) { console.warn('device update (non-critical):', e); }
-
-    document.querySelectorAll('.auth-screen').forEach(function (s) { s.classList.add('hidden'); });
-    const mainApp = document.getElementById('mainApp');
-    if (mainApp) mainApp.classList.remove('hidden');
-
-    const titleEl = document.getElementById('appTitle');
-    if (titleEl) titleEl.textContent = '🏪 ' + State.currentCompanyName;
-
-    const userEl = document.getElementById('userInfo');
-    if (userEl) {
-      userEl.textContent = State.currentEmployee.name + ' - ' +
-        (PERMISSIONS[State.currentEmployee.role] ? PERMISSIONS[State.currentEmployee.role].label : State.currentEmployee.role);
-    }
-
-    const compEl = document.getElementById('companyInfo');
-    if (compEl) compEl.textContent = 'معرّف الشركة: ' + State.currentCompanyId;
-
-    const devEl = document.getElementById('deviceLabel');
-    if (devEl) devEl.textContent = '📱 ' + State.deviceId.substr(-6);
-
-    const adminTools = document.getElementById('adminTools');
-    if (adminTools) adminTools.style.display = can('data_clear') ? 'block' : 'none';
-
-    App.startDataListeners();
-    await App.loadCacheFromLocal();
-    Menu.render();
-    App.openPage('home');
-    Sync.updateBar();
-    await Activity.log('login', 'دخول: ' + State.currentEmployee.name);
-    App.watchDeviceApproval();
-    App.watchEmployeeStatus();
-  } catch (e) {
-    console.error('❌ loadCompanyData fatal error:', e);
-    Toast.show('خطأ في تحميل البيانات: ' + (e.message || 'غير معروف'), 'error');
-    setTimeout(function () {
-      App.safeLogout('load_error');
-    }, 2000);
-  }
-},
-
-  // ⚠️ الحل الجذري: دمج Firebase مع cache المحلي
+  // ═══════════════════════════════════════════════════════════════════
+  // 8) startDataListeners — [معدّلة] بـ debounce
+  // ═══════════════════════════════════════════════════════════════════
   startDataListeners() {
     App.stopAllListeners();
     const dataKeys = [
@@ -3674,13 +3740,11 @@ const App = {
           const val = snap.val();
           const serverData = val ? Object.values(val) : [];
 
-          // 1. Firebase هو المرجع الأساسي
           const merged = {};
           serverData.forEach(function (item) {
             if (item && item.id) merged[item.id] = item;
           });
 
-          // 2. دمج عناصر pending (اللي لسه ما اترفعتش)
           try {
             const pendingKey = 'pending_changes_' + State.currentCompanyId;
             const pending = JSON.parse(localStorage.getItem(pendingKey) || '[]');
@@ -3691,7 +3755,6 @@ const App = {
             });
           } catch (e) {}
 
-          // 3. دمج offline_data (المحفوظ محلياً)
           try {
             const offlineKey = 'offline_data_' + State.currentCompanyId + '_' + k;
             const offline = JSON.parse(localStorage.getItem(offlineKey) || '{}');
@@ -3702,7 +3765,6 @@ const App = {
             }
           } catch (e) {}
 
-          // 4. لو Firebase رجع فاضي تماماً، سيب الـ cache القديم (يمكن الاتصال ضعيف)
           if (serverData.length === 0 && cache[k] && cache[k].length > 0) {
             App.refreshCurrentPage();
             return;
@@ -3716,51 +3778,82 @@ const App = {
         State.listeners.push({ ref: ref, callback: callback });
       })(key);
     }
+
+    // ⚠️ [إصلاح] debounce على refreshCurrentPage لمنع re-render المكثف
+    let refreshTimer = null;
+    if (!App._originalRefresh) App._originalRefresh = App.refreshCurrentPage;
+    const originalCallback = App._originalRefresh;
+
+    App.refreshCurrentPage = function () {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(function () {
+        refreshTimer = null;
+        try { originalCallback.call(App); }
+        catch (e) { console.warn('refresh debounced error:', e); }
+      }, 250);
+    };
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 9) stopAllListeners — [معدّلة] بإرجاع refreshCurrentPage
+  // ═══════════════════════════════════════════════════════════════════
   stopAllListeners() {
     State.listeners.forEach(function (l) {
       try { l.ref.off('value', l.callback); } catch (e) {}
     });
     State.listeners = [];
+
+    if (App._originalRefresh) {
+      App.refreshCurrentPage = App._originalRefresh;
+      App._originalRefresh = null;
+    }
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 10) refreshCurrentPage
+  // ═══════════════════════════════════════════════════════════════════
   refreshCurrentPage() {
-  if (!State.currentEmployee) return;
+    if (!State.currentEmployee) return;
 
-  try {
-    const page = State.currentPage;
-    const safe = function (name, fn) {
-      try { if (typeof fn === 'function') fn(); }
-      catch (e) { console.warn('refresh[' + name + '] error:', e); }
-    };
+    try {
+      const page = State.currentPage;
+      const safe = function (name, fn) {
+        try { if (typeof fn === 'function') fn(); }
+        catch (e) { console.warn('refresh[' + name + '] error:', e); }
+      };
 
-    if (page === 'home') safe('Dashboard', Dashboard.render);
-    else if (page === 'attendance') safe('Attendance', Attendance.renderMark);
-    else if (page === 'employees') safe('Employees', Employees.render);
-    else if (page === 'hr') safe('HR', HR.render);
-    else if (page === 'products') safe('Products', Products.render);
-    else if (page === 'partners') safe('Partners', Partners.render);
-    else if (page === 'invoices') safe('Invoices', Invoices.render);
-    else if (page === 'vouchers') safe('Vouchers', Vouchers.render);
-    else if (page === 'cash') safe('Cash', Cash.render);
-    else if (page === 'payroll') safe('Payroll', Payroll.render);
-    else if (page === 'expenses') safe('Expenses', Expenses.render);
-    else if (page === 'policies') safe('Policies', Policies.render);
-    else if (page === 'whatsapp') safe('WhatsApp', WhatsApp.render);
-    else if (page === 'activity') safe('Activity', Activity.render);
-    else if (page === 'devices') safe('Devices', Devices.render);
-    else if (page === 'requests') safe('Requests', Requests.render);
-    else if (page === 'geofence') safe('Geofence', Geofence.render);
+      if (page === 'home') safe('Dashboard', Dashboard.render);
+      else if (page === 'attendance') safe('Attendance', Attendance.renderMark);
+      else if (page === 'employees') safe('Employees', Employees.render);
+      else if (page === 'hr') safe('HR', HR.render);
+      else if (page === 'products') safe('Products', Products.render);
+      else if (page === 'partners') safe('Partners', Partners.render);
+      else if (page === 'invoices') safe('Invoices', Invoices.render);
+      else if (page === 'vouchers') safe('Vouchers', Vouchers.render);
+      else if (page === 'cash') safe('Cash', Cash.render);
+      else if (page === 'payroll') safe('Payroll', Payroll.render);
+      else if (page === 'expenses') safe('Expenses', Expenses.render);
+      else if (page === 'policies') safe('Policies', Policies.render);
+      else if (page === 'whatsapp') safe('WhatsApp', WhatsApp.render);
+      else if (page === 'activity') safe('Activity', Activity.render);
+      else if (page === 'devices') safe('Devices', Devices.render);
+      else if (page === 'requests') safe('Requests', Requests.render);
+      else if (page === 'geofence') safe('Geofence', Geofence.render);
 
-    safe('Menu', Menu.updateRequestsBadge);
-  } catch (e) { console.warn('refresh outer:', e); }
-},
-  
+      safe('Menu', Menu.updateRequestsBadge);
+    } catch (e) { console.warn('refresh outer:', e); }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 11) saveCacheToLocal
+  // ═══════════════════════════════════════════════════════════════════
   saveCacheToLocal(key, data) {
     try { localStorage.setItem('cache_' + State.currentCompanyId + '_' + key, JSON.stringify(data)); } catch (e) {}
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 12) loadCacheFromLocal
+  // ═══════════════════════════════════════════════════════════════════
   async loadCacheFromLocal() {
     for (const key of Object.keys(cache)) {
       try {
@@ -3773,6 +3866,9 @@ const App = {
     }
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 13) openPage
+  // ═══════════════════════════════════════════════════════════════════
   openPage(page) {
     const permMap = {
       'attendance': 'attendance_report', 'employees': 'employees_view', 'hr': 'hr_view',
@@ -3841,9 +3937,19 @@ const App = {
     window.scrollTo(0, 0);
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 14) goHome
+  // ═══════════════════════════════════════════════════════════════════
   goHome() { App.openPage('home'); },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 15) goBack
+  // ═══════════════════════════════════════════════════════════════════
   goBack() { App.handleBack(); },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 16) handleBack
+  // ═══════════════════════════════════════════════════════════════════
   handleBack() {
     const now = Date.now();
     const modal = document.querySelector('.modal-overlay');
@@ -3862,6 +3968,9 @@ const App = {
     }
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 17) exitApp
+  // ═══════════════════════════════════════════════════════════════════
   exitApp() {
     if (!confirm('هل تريد الخروج من التطبيق؟')) return;
     if (navigator.app && navigator.app.exitApp) navigator.app.exitApp();
@@ -3869,20 +3978,26 @@ const App = {
     else { window.close(); Toast.show('لا يمكن إغلاق التطبيق في المتصفح', 'info'); }
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 18) watchDeviceApproval
+  // ═══════════════════════════════════════════════════════════════════
   watchDeviceApproval() {
-  if (!State.currentCompanyId || !State.deviceId) return;
-  const ref = FBDB.ref('companies/' + State.currentCompanyId + '/devices/' + State.deviceId);
-  ref.on('value', function (snap) {
-    const data = snap.val();
-    if (!data) return;
-    if (data.status === 'rejected' || data.approved === false) {
-      Toast.show('🚫 تم طرد هذا الجهاز', 'error');
-      setTimeout(function () { App.safeLogout('device_rejected'); }, 2000);
-    }
-  });
-},
+    if (!State.currentCompanyId || !State.deviceId) return;
+    const ref = FBDB.ref('companies/' + State.currentCompanyId + '/devices/' + State.deviceId);
+    ref.on('value', function (snap) {
+      const data = snap.val();
+      if (!data) return;
+      if (data.status === 'rejected' || data.approved === false) {
+        Toast.show('🚫 تم طرد هذا الجهاز', 'error');
+        setTimeout(function () { App.safeLogout('device_rejected'); }, 2000);
+      }
+    });
+  },
 
-    watchEmployeeStatus() {
+  // ═══════════════════════════════════════════════════════════════════
+  // 19) watchEmployeeStatus
+  // ═══════════════════════════════════════════════════════════════════
+  watchEmployeeStatus() {
     if (!State.currentCompanyId || !State.currentUser) return;
     const ref = FBDB.ref('companies/' + State.currentCompanyId + '/employees/' + State.currentUser.uid);
     ref.on('value', function (snap) {
@@ -3897,6 +4012,9 @@ const App = {
     });
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // 20) safeLogout — [معدّلة] بمسح cache كامل
+  // ═══════════════════════════════════════════════════════════════════
   async safeLogout(reason) {
     console.log('🔓 Safe logout triggered:', reason || 'unspecified');
     try {
@@ -3920,50 +4038,45 @@ const App = {
 
       try { await FBAuth.signOut(); } catch (e) { console.warn('signOut:', e); }
 
+      const previousCompanyId = State.currentCompanyId;
+
       State.currentUser = null;
       State.currentEmployee = null;
       State.currentCompanyName = '';
       State.companyRef = null;
       State.listeners = [];
       State._saleFormActive = false;
-State._purchaseFormActive = false;
-State._returnFormActive = false;
-State._initialized = { sales: false, purchase: false, returns: false };
+      State._purchaseFormActive = false;
+      State._returnFormActive = false;
+      State._initialized = { sales: false, purchase: false, returns: false };
 
-// ⚠️ حفظ companyId الحالي قبل المسح
-const previousCompanyId = State.currentCompanyId;
+      try { localStorage.removeItem('company_id'); } catch (e) {}
 
-try { localStorage.removeItem('company_id'); } catch (e) {}
+      // ⚠️ [إصلاح أمني] مسح كل cache الشركة الحالية
+      try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k) continue;
+          if (previousCompanyId && k.startsWith('cache_' + previousCompanyId + '_')) {
+            keysToRemove.push(k);
+          }
+          if (previousCompanyId && k.startsWith('offline_data_' + previousCompanyId + '_')) {
+            keysToRemove.push(k);
+          }
+          if (previousCompanyId && k === 'pending_changes_' + previousCompanyId) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach(function (k) { localStorage.removeItem(k); });
+        console.log('🧹 Cleared ' + keysToRemove.length + ' cache keys for company: ' + previousCompanyId);
+      } catch (e) { console.warn('cache clear error:', e); }
 
-// ⚠️ [إصلاح أمني] مسح كل cache الشركة الحالية من localStorage
-// عشان لو الجهاز مشترك، المستخدم الجديد مايشوفش بيانات الشركة القديمة
-try {
-  const keysToRemove = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (!k) continue;
-    // cache الشركة الحالية
-    if (previousCompanyId && k.startsWith('cache_' + previousCompanyId + '_')) {
-      keysToRemove.push(k);
-    }
-    // offline data
-    if (previousCompanyId && k.startsWith('offline_data_' + previousCompanyId + '_')) {
-      keysToRemove.push(k);
-    }
-    // pending changes
-    if (previousCompanyId && k === 'pending_changes_' + previousCompanyId) {
-      keysToRemove.push(k);
-    }
-  }
-  keysToRemove.forEach(function (k) { localStorage.removeItem(k); });
-  console.log('🧹 Cleared ' + keysToRemove.length + ' cache keys for company: ' + previousCompanyId);
-} catch (e) { console.warn('cache clear error:', e); }
-
-try {
-  if (typeof saleItems !== 'undefined') saleItems.length = 0;
-  if (typeof purItems !== 'undefined') purItems.length = 0;
-  if (typeof retItems !== 'undefined') retItems.length = 0;
-} catch (e) {}
+      try {
+        if (typeof saleItems !== 'undefined') saleItems.length = 0;
+        if (typeof purItems !== 'undefined') purItems.length = 0;
+        if (typeof retItems !== 'undefined') retItems.length = 0;
+      } catch (e) {}
 
       const mainApp = document.getElementById('mainApp');
       if (mainApp) mainApp.classList.add('hidden');
@@ -5842,127 +5955,137 @@ const Payroll = {
   // ➕ إنشاء مرتب
   // ═══════════════════════════════════════════════════════════════════
   async generate() {
-    if (!requirePermission('payroll_generate', 'إنشاء مرتب')) return;
+  if (!requirePermission('payroll_generate', 'إنشاء مرتب')) return;
 
-    const empUid = document.getElementById('payEmp').value;
-    const month = parseInt(document.getElementById('payMonth').value);
-    const year = parseInt(document.getElementById('payYear').value);
-    const bonus = parseFloat(document.getElementById('payBonus').value) || 0;
-    const deduction = parseFloat(document.getElementById('payDeduction').value) || 0;
+  const empUid = document.getElementById('payEmp').value;
+  const month = parseInt(document.getElementById('payMonth').value);
+  const year = parseInt(document.getElementById('payYear').value);
+  const bonus = parseFloat(document.getElementById('payBonus').value) || 0;
+  const deduction = parseFloat(document.getElementById('payDeduction').value) || 0;
 
-    if (!empUid) return Toast.show('اختر موظف', 'error');
-    if (month < 1 || month > 12) return Toast.show('شهر غير صالح', 'error');
-    if (year < 2020 || year > 2100) return Toast.show('سنة غير صالحة', 'error');
+  if (!empUid) return Toast.show('اختر موظف', 'error');
+  if (month < 1 || month > 12) return Toast.show('شهر غير صالح', 'error');
+  if (year < 2020 || year > 2100) return Toast.show('سنة غير صالحة', 'error');
 
-    const emp = (cache.employees || []).find(function (x) { return x.uid === empUid; });
-    if (!emp) return Toast.show('الموظف غير موجود', 'error');
+  const emp = (cache.employees || []).find(function (x) { return x.uid === empUid; });
+  if (!emp) return Toast.show('الموظف غير موجود', 'error');
 
-    const monthKey = year + '-' + String(month).padStart(2, '0');
-    const existing = (cache.payroll || []).find(function (p) {
-      return p.employee_uid === empUid && p.month === monthKey;
-    });
-    if (existing && !confirm('المرتب موجود بالفعل. إعادة الحساب؟')) return;
+  const monthKey = year + '-' + String(month).padStart(2, '0');
+  const existing = (cache.payroll || []).find(function (p) {
+    return p.employee_uid === empUid && p.month === monthKey;
+  });
+  if (existing && !confirm('المرتب موجود بالفعل. إعادة الحساب؟')) return;
 
-    Toast.show('⏳ جاري حساب المرتب...', 'info');
+  Toast.show('⏳ جاري حساب المرتب...', 'info');
 
-    const start = monthKey + '-01';
-    const lastDay = new Date(year, month, 0).getDate();
-    const end = monthKey + '-' + String(lastDay).padStart(2, '0');
+  const start = monthKey + '-01';
+  const lastDay = new Date(year, month, 0).getDate();
+  const end = monthKey + '-' + String(lastDay).padStart(2, '0');
 
-    // ⚠️ حساب الحضور
-    const att = (cache.attendance || []).filter(function (a) {
-      return a.employee_uid === empUid && a.date >= start && a.date <= end;
-    });
-    const presentDays = att.filter(function (a) { return a.check_in && a.status === 'present'; }).length;
-    const leaveDays = att.filter(function (a) { return a.status === 'leave'; }).length;
-    const workDays = Utils.calculateWorkDaysInMonth(year, month);
-    const absenceDays = Math.max(0, workDays - presentDays - leaveDays);
+  const att = (cache.attendance || []).filter(function (a) {
+    return a.employee_uid === empUid && a.date >= start && a.date <= end;
+  });
+  const presentDays = att.filter(function (a) { return a.check_in && a.status === 'present'; }).length;
+  const leaveDays = att.filter(function (a) { return a.status === 'leave'; }).length;
+  const workDays = Utils.calculateWorkDaysInMonth(year, month);
+  const absenceDays = Math.max(0, workDays - presentDays - leaveDays);
 
-    // ⚠️ الراتب الأساسي والبدلات
-    const basic = Number(emp.basic_salary) || 0;
-    const housing = Number(emp.housing_allowance) || 0;
-    const transport = Number(emp.transport_allowance) || 0;
-    const insurance = Number(emp.insurance_deduction) || 0;
-    const tax = Number(emp.tax_deduction) || 0;
+  const basic = Number(emp.basic_salary) || 0;
+  const housing = Number(emp.housing_allowance) || 0;
+  const transport = Number(emp.transport_allowance) || 0;
+  const insurance = Number(emp.insurance_deduction) || 0;
+  const tax = Number(emp.tax_deduction) || 0;
 
-    // ⚠️ خصم الغياب
-    const dailyRate = basic / WORK_DAYS_PER_MONTH;
-    const absenceDeduction = dailyRate * absenceDays;
+  const dailyRate = basic / WORK_DAYS_PER_MONTH;
+  const absenceDeduction = dailyRate * absenceDays;
 
-    // ⚠️ خصم التأخير
-    const lateDeduction = att.reduce(function (s, a) { return s + (Number(a.late_deduction) || 0); }, 0);
-    const lateMinutes = att.reduce(function (s, a) { return s + (Number(a.minutes_late) || 0); }, 0);
+  const lateDeduction = att.reduce(function (s, a) { return s + (Number(a.late_deduction) || 0); }, 0);
+  const lateMinutes = att.reduce(function (s, a) { return s + (Number(a.minutes_late) || 0); }, 0);
 
-    // ⚠️ السلف غير المسددة
-    const advances = (cache.employee_transactions || [])
-      .filter(function (t) { return t.employee_uid === empUid && t.type === 'advance' && !t.paid; })
-      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+  const advances = (cache.employee_transactions || [])
+    .filter(function (t) { return t.employee_uid === empUid && t.type === 'advance' && !t.paid; })
+    .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
 
-    // ⚠️ المكافآت والخصومات من HR
-    const hrBonuses = (cache.employee_transactions || [])
-      .filter(function (t) {
-        return t.employee_uid === empUid && t.type === 'bonus' && !t.paid &&
-               t.date && t.date >= start && t.date <= end;
-      })
-      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+  const hrBonuses = (cache.employee_transactions || [])
+    .filter(function (t) {
+      return t.employee_uid === empUid && t.type === 'bonus' && !t.paid &&
+             t.date && t.date >= start && t.date <= end;
+    })
+    .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
 
-    const hrDeductions = (cache.employee_transactions || [])
-      .filter(function (t) {
-        return t.employee_uid === empUid && t.type === 'deduction' && !t.paid &&
-               t.date && t.date >= start && t.date <= end;
-      })
-      .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
+  const hrDeductions = (cache.employee_transactions || [])
+    .filter(function (t) {
+      return t.employee_uid === empUid && t.type === 'deduction' && !t.paid &&
+             t.date && t.date >= start && t.date <= end;
+    })
+    .reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0);
 
-    // ⚠️ الحساب النهائي
-    const gross = basic + housing + transport + bonus + hrBonuses;
-    const totalDed = insurance + tax + absenceDeduction + lateDeduction + deduction + advances + hrDeductions;
-    const net = gross - totalDed;
+  const gross = basic + housing + transport + bonus + hrBonuses;
+  const totalDed = insurance + tax + absenceDeduction + lateDeduction + deduction + advances + hrDeductions;
+  const net = gross - totalDed;
 
-    const id = existing ? existing.id : Utils.genId('PAY');
+  const id = existing ? existing.id : Utils.genId('PAY');
 
-    const data = {
-      id: id,
-      employee_uid: empUid,
-      employee_name: emp.name,
-      month: monthKey,
-      basic_salary: basic,
-      housing_allowance: housing,
-      transport_allowance: transport,
-      bonuses: bonus + hrBonuses,
-      deductions: deduction + hrDeductions,
-      absence_days: absenceDays,
-      absence_deduction: absenceDeduction,
-      late_minutes: lateMinutes,
-      late_deduction: lateDeduction,
-      insurance_deduction: insurance,
-      tax_deduction: tax,
-      advances_deduction: advances,
-      net_salary: net,
-      work_days: workDays,
-      attendance_days: presentDays,
-      leave_days: leaveDays,
-      status: existing ? existing.status : 'pending',
-      accrual_date: end,
-      created_at: Utils.nowISO(),
-      created_by: State.currentEmployee.name
-    };
+  const data = {
+    id: id,
+    employee_uid: empUid,
+    employee_name: emp.name,
+    month: monthKey,
+    basic_salary: basic,
+    housing_allowance: housing,
+    transport_allowance: transport,
+    bonuses: bonus + hrBonuses,
+    deductions: deduction + hrDeductions,
+    absence_days: absenceDays,
+    absence_deduction: absenceDeduction,
+    late_minutes: lateMinutes,
+    late_deduction: lateDeduction,
+    insurance_deduction: insurance,
+    tax_deduction: tax,
+    advances_deduction: advances,
+    net_salary: net,
+    work_days: workDays,
+    attendance_days: presentDays,
+    leave_days: leaveDays,
+    status: existing ? existing.status : 'pending',
+    accrual_date: end,
+    created_at: Utils.nowISO(),
+    created_by: State.currentEmployee.name
+  };
 
-    await Sync.save('payroll', id, data);
+  await Sync.save('payroll', id, data);
 
-    // ⚠️ تحديث cache
-    const idx = (cache.payroll || []).findIndex(function (p) { return p.id === id; });
-    if (idx >= 0) cache.payroll[idx] = data;
-    else cache.payroll.push(data);
+  const idx = (cache.payroll || []).findIndex(function (p) { return p.id === id; });
+  if (idx >= 0) cache.payroll[idx] = data;
+  else cache.payroll.push(data);
 
-    await Activity.log('payroll_generate', emp.name + ' - ' + monthKey + ' - صافي ' + Utils.fmtMoney(net));
+  await Activity.log('payroll_generate', emp.name + ' - ' + monthKey + ' - صافي ' + Utils.fmtMoney(net));
 
-    Toast.show('✅ تم الإنشاء — صافي: ' + Utils.fmtMoney(net));
+  // ⚠️ [إصلاح] نعرض تفاصيل المرتب قبل ما نقول "تم"
+  const confirmHtml =
+    '<div class="success-box">✅ تم إنشاء المرتب</div>' +
+    '<div class="card" style="margin-top:12px;">' +
+      '<h3>📄 ملخص المرتب</h3>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;"><span>الموظف:</span><strong>' + Utils.esc(emp.name) + '</strong></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;"><span>الشهر:</span><strong>' + Utils.esc(monthKey) + '</strong></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;"><span>الأساسي:</span><strong>' + Utils.fmtMoney(basic) + '</strong></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;"><span>بدلات:</span><strong>' + Utils.fmtMoney(housing + transport) + '</strong></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;"><span>مكافآت:</span><strong style="color:var(--green-2);">+' + Utils.fmtMoney(bonus + hrBonuses) + '</strong></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px dashed rgba(212,175,55,.3);"><span>إجمالي الخصومات:</span><strong style="color:var(--red-2);">-' + Utils.fmtMoney(totalDed) + '</strong></div>' +
+      '<div style="display:flex;justify-content:space-between;padding:10px 0;font-size:20px;color:var(--gold);font-weight:800;border-top:2px solid var(--gold);margin-top:8px;"><span>الصافي:</span><strong>' + Utils.fmtMoney(net) + '</strong></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:12px;">' +
+      '<button class="btn btn-primary btn-full" onclick="Modal.close();Payroll.show(\'' + id + '\')">📄 عرض التفاصيل</button>' +
+      '<button class="btn btn-outline btn-full" onclick="Modal.close()">✓ تم</button>' +
+    '</div>';
 
-    document.getElementById('payBonus').value = 0;
-    document.getElementById('payDeduction').value = 0;
+  Modal.open('✅ تم إنشاء المرتب', confirmHtml, null, 'إغلاق');
 
-    if (State.currentPayrollTab === 'list') Payroll.loadList();
-  },
+  document.getElementById('payBonus').value = 0;
+  document.getElementById('payDeduction').value = 0;
+
+  if (State.currentPayrollTab === 'list') Payroll.loadList();
+},
 
   // ═══════════════════════════════════════════════════════════════════
   // 💵 صرف مرتب واحد
@@ -7614,7 +7737,6 @@ removeItem(i) {
   if (!custId) return Toast.show('اختر عميل', 'error');
   if (saleItems.length === 0) return Toast.show('أضف أصناف', 'error');
 
-  // ⚠️ التحقق من الرصيد
   for (const it of saleItems) {
     const p = (cache.products || []).find(function (x) { return x.id === it.product_id; });
     if (!p) return Toast.show('منتج غير موجود', 'error');
@@ -7623,11 +7745,9 @@ removeItem(i) {
     }
   }
 
-  // ⚠️ تأكيد الهوية
   const verified = await Biometric.verify('تأكيد فاتورة المبيعات');
   if (!verified) return Toast.show('فشل التحقق', 'error');
 
-  // ⚠️ قراءة الخصم (نسبة أو مبلغ)
   const discTypeEl = document.getElementById('saleDiscountType');
   const discType = discTypeEl ? discTypeEl.value : 'amount';
   const discValue = parseFloat(document.getElementById('saleDiscount').value) || 0;
@@ -7636,12 +7756,10 @@ removeItem(i) {
   const paid = parseFloat(document.getElementById('salePaid').value) || 0;
   const paymentMethod = document.getElementById('salePayment').value;
 
-  // ⚠️ حساب المجموع الفرعي
   const sub = saleItems.reduce(function (s, it) {
     return s + (Number(it.quantity) || 0) * (Number(it.price) || 0);
   }, 0);
 
-  // ⚠️ حساب الخصم
   let disc = 0;
   if (discType === 'percent') {
     disc = sub * (discValue / 100);
@@ -7651,11 +7769,9 @@ removeItem(i) {
   if (disc > sub) disc = sub;
   if (disc < 0) disc = 0;
 
-  // ⚠️ الإجمالي النهائي
   const total = sub - disc + tax;
   const remaining = total - paid;
 
-  // ⚠️ الحساب اللي الفلوس دخلته
   const accountId = methodToAccountId(paymentMethod);
   const account = getAccount(accountId);
 
@@ -7663,25 +7779,65 @@ removeItem(i) {
   const invoiceNo = 'S-' + Date.now();
   const now = Utils.nowISO();
 
-  // ⚠️ 1. خصم الكميات من المخزون
+  // ⚠️ [إصلاح] نسخة من الرصيد + rollback تلقائي
+  const stockSnapshot = [];
   for (const it of saleItems) {
     const p = (cache.products || []).find(function (x) { return x.id === it.product_id; });
-    p.quantity = (Number(p.quantity) || 0) - it.quantity;
-    await Sync.save('products', p.id, p);
-    const moveId = Utils.genId('SM');
-    await Sync.save('stock_movements', moveId, {
-      id: moveId,
-      product_id: it.product_id,
-      type: 'out',
-      quantity: it.quantity,
-      balance_after: p.quantity,
-      reference: invoiceNo,
-      date: now,
-      employee_name: State.currentEmployee.name
+    if (!p) {
+      return Toast.show('❌ منتج محذوف: ' + it.name, 'error');
+    }
+    const currentQty = Number(p.quantity) || 0;
+    if (currentQty < it.quantity) {
+      return Toast.show('❌ رصيد "' + p.name + '" تغيّر — المتاح: ' + currentQty, 'error');
+    }
+    stockSnapshot.push({
+      id: p.id,
+      name: p.name,
+      oldQty: currentQty,
+      newQty: currentQty - it.quantity,
+      deducted: it.quantity
     });
   }
 
-  // ⚠️ 2. حفظ الفاتورة
+  const appliedDeductions = [];
+  try {
+    for (const snap of stockSnapshot) {
+      const p = (cache.products || []).find(function (x) { return x.id === snap.id; });
+      p.quantity = snap.newQty;
+      await Sync.save('products', p.id, p);
+      appliedDeductions.push(snap);
+
+      const moveId = Utils.genId('SM');
+      await Sync.save('stock_movements', moveId, {
+        id: moveId,
+        product_id: snap.id,
+        type: 'out',
+        quantity: snap.deducted,
+        balance_before: snap.oldQty,
+        balance_after: snap.newQty,
+        reference: invoiceNo,
+        date: now,
+        employee_name: State.currentEmployee.name,
+        invoice_id: invoiceId
+      });
+    }
+  } catch (deductError) {
+    console.error('Stock deduction failed — rolling back:', deductError);
+
+    for (const snap of appliedDeductions) {
+      try {
+        const p = (cache.products || []).find(function (x) { return x.id === snap.id; });
+        if (p) {
+          p.quantity = snap.oldQty;
+          await Sync.save('products', p.id, p);
+        }
+      } catch (rollbackErr) {
+        console.error('Rollback failed for', snap.id, rollbackErr);
+      }
+    }
+    return Toast.show('❌ فشل حفظ الفاتورة — تم التراجع', 'error');
+  }
+
   const customer = (cache.partners || []).find(function (x) { return x.id === custId; });
   await Sync.save('sales_invoices', invoiceId, {
     id: invoiceId,
@@ -7706,7 +7862,6 @@ removeItem(i) {
     created_at: now
   });
 
-  // ⚠️ 3. حفظ الأصناف
   for (const it of saleItems) {
     const iid = Utils.genId('SI');
     await Sync.save('sales_items', iid, {
@@ -7722,18 +7877,15 @@ removeItem(i) {
     });
   }
 
-  // ⚠️ 4. تحديث رصيد العميل
   if (customer) {
     customer.balance = (Number(customer.balance) || 0) + remaining;
     await Sync.save('partners', custId, customer);
   }
 
-  // ⚠️ 5. لو فيه مبلغ مدفوع → إنشاء سند قبض + حركة خزينة
   if (paid > 0) {
     const voucherId = Utils.genId('RCV');
     const voucherNo = 'RCV-' + Date.now();
 
-    // سند القبض
     await Sync.save('vouchers', voucherId, {
       id: voucherId,
       voucher_no: voucherNo,
@@ -7756,7 +7908,6 @@ removeItem(i) {
       created_at: now
     });
 
-    // حركة الخزينة
     const cashId = Utils.genId('CSH');
     await Sync.save('cash_transactions', cashId, {
       id: cashId,
@@ -7777,20 +7928,17 @@ removeItem(i) {
     });
   }
 
-  // ⚠️ 6. تسجيل النشاط
   await Activity.log('sale_invoice', invoiceNo + ' - ' + Utils.fmtMoney(total) + ' - ' + account.label);
 
   Toast.show('✅ تم تسجيل الفاتورة');
 
-  // ⚠️ 7. إعادة التهيئة
   saleItems.length = 0;
   State._saleFormActive = false;
   State._initialized.sales = false;
   Sales.init();
 
-  // ⚠️ 8. عرض الفاتورة
   setTimeout(function () { Invoices.show(invoiceId, 'sales'); }, 300);
-}
+  }
 };
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -7943,97 +8091,137 @@ removeItem(i) {
 },
 
   async save() {
-    if (!requirePermission('purchase_create', 'إنشاء فاتورة')) return;
-    const supId = document.getElementById('purSupplier').value;
-    if (!supId) return Toast.show('اختر مورد', 'error');
-    if (purItems.length === 0) return Toast.show('أضف أصناف', 'error');
+  if (!requirePermission('purchase_create', 'إنشاء فاتورة')) return;
+  const supId = document.getElementById('purSupplier').value;
+  if (!supId) return Toast.show('اختر مورد', 'error');
+  if (purItems.length === 0) return Toast.show('أضف أصناف', 'error');
 
-    const verified = await Biometric.verify('تأكيد فاتورة المشتريات');
-    if (!verified) return Toast.show('فشل التحقق', 'error');
+  const verified = await Biometric.verify('تأكيد فاتورة المشتريات');
+  if (!verified) return Toast.show('فشل التحقق', 'error');
 
-    const disc = parseFloat(document.getElementById('purDiscount').value) || 0;
-    const tax = parseFloat(document.getElementById('purTax').value) || 0;
-    const paid = parseFloat(document.getElementById('purPaid').value) || 0;
-    const sub = purItems.reduce(function (s, it) { return s + it.quantity * it.price; }, 0);
-    const total = sub - disc + tax;
-    const remaining = total - paid;
-    const invoiceId = Utils.genId('P');
-    const invoiceNo = 'P-' + Date.now();
-    const now = Utils.nowISO();
-    const paymentMethod = document.getElementById('purPayment').value;
+  const disc = parseFloat(document.getElementById('purDiscount').value) || 0;
+  const tax = parseFloat(document.getElementById('purTax').value) || 0;
+  const paid = parseFloat(document.getElementById('purPaid').value) || 0;
+  const sub = purItems.reduce(function (s, it) { return s + it.quantity * it.price; }, 0);
+  const total = sub - disc + tax;
+  const remaining = total - paid;
+  const invoiceId = Utils.genId('P');
+  const invoiceNo = 'P-' + Date.now();
+  const now = Utils.nowISO();
+  const paymentMethod = document.getElementById('purPayment').value;
 
-    for (const it of purItems) {
-      const p = (cache.products || []).find(function (x) { return x.id === it.product_id; });
-      p.quantity = (Number(p.quantity) || 0) + it.quantity;
-      p.cost_price = it.price;
+  // ⚠️ [إصلاح] نسخة من الرصيد + rollback تلقائي
+  const purchaseSnapshot = [];
+  for (const it of purItems) {
+    const p = (cache.products || []).find(function (x) { return x.id === it.product_id; });
+    if (!p) {
+      return Toast.show('❌ منتج محذوف: ' + it.name, 'error');
+    }
+    purchaseSnapshot.push({
+      id: p.id,
+      name: p.name,
+      oldQty: Number(p.quantity) || 0,
+      newQty: (Number(p.quantity) || 0) + it.quantity,
+      added: it.quantity,
+      newCost: it.price
+    });
+  }
+
+  const appliedAdditions = [];
+  try {
+    for (const snap of purchaseSnapshot) {
+      const p = (cache.products || []).find(function (x) { return x.id === snap.id; });
+      p.quantity = snap.newQty;
+      p.cost_price = snap.newCost;
       await Sync.save('products', p.id, p);
+      appliedAdditions.push(snap);
+
       const moveId = Utils.genId('SM');
       await Sync.save('stock_movements', moveId, {
-        id: moveId, product_id: it.product_id, type: 'in',
-        quantity: it.quantity, balance_after: p.quantity,
-        reference: invoiceNo, date: now,
-        employee_name: State.currentEmployee.name
+        id: moveId,
+        product_id: snap.id,
+        type: 'in',
+        quantity: snap.added,
+        balance_before: snap.oldQty,
+        balance_after: snap.newQty,
+        reference: invoiceNo,
+        date: now,
+        employee_name: State.currentEmployee.name,
+        invoice_id: invoiceId
       });
     }
+  } catch (err) {
+    console.error('Purchase stock update failed — rolling back:', err);
+    for (const snap of appliedAdditions) {
+      try {
+        const p = (cache.products || []).find(function (x) { return x.id === snap.id; });
+        if (p) {
+          p.quantity = snap.oldQty;
+          await Sync.save('products', p.id, p);
+        }
+      } catch (e) {}
+    }
+    return Toast.show('❌ فشل حفظ الفاتورة — تم التراجع', 'error');
+  }
 
-    await Sync.save('purchase_invoices', invoiceId, {
-      id: invoiceId, invoice_no: invoiceNo,
-      supplier_id: supId,
-      supplier_name: (cache.partners || []).find(function (x) { return x.id === supId; })
-        ? (cache.partners || []).find(function (x) { return x.id === supId; }).name : '',
+  await Sync.save('purchase_invoices', invoiceId, {
+    id: invoiceId, invoice_no: invoiceNo,
+    supplier_id: supId,
+    supplier_name: (cache.partners || []).find(function (x) { return x.id === supId; })
+      ? (cache.partners || []).find(function (x) { return x.id === supId; }).name : '',
+    employee_uid: State.currentUser.uid,
+    employee_name: State.currentEmployee.name,
+    date: now, subtotal: sub, discount: disc, tax: tax,
+    total: total, paid: paid, remaining: remaining,
+    payment_method: paymentMethod,
+    fingerprint_verified: 1, created_at: now
+  });
+
+  for (const it of purItems) {
+    const iid = Utils.genId('PI');
+    await Sync.save('purchase_items', iid, {
+      id: iid, invoice_id: invoiceId, product_id: it.product_id,
+      product_name: it.name, quantity: it.quantity,
+      price: it.price, total: it.quantity * it.price
+    });
+  }
+
+  const s = (cache.partners || []).find(function (x) { return x.id === supId; });
+  if (s) {
+    s.balance = (Number(s.balance) || 0) + remaining;
+    await Sync.save('partners', supId, s);
+  }
+
+  if (paid > 0) {
+    const voucherId = Utils.genId('PAY');
+    const voucherNo = 'PAY-' + Date.now();
+    await Sync.save('vouchers', voucherId, {
+      id: voucherId, voucher_no: voucherNo, type: 'payment',
+      amount: paid, partner_id: supId,
       employee_uid: State.currentUser.uid,
       employee_name: State.currentEmployee.name,
-      date: now, subtotal: sub, discount: disc, tax: tax,
-      total: total, paid: paid, remaining: remaining,
-      payment_method: paymentMethod,
-      fingerprint_verified: 1, created_at: now
+      date: now, payment_method: paymentMethod,
+      description: 'سداد فاتورة مشتريات ' + invoiceNo,
+      reference: invoiceNo, auto_generated: true, created_at: now
     });
+    const cashId = Utils.genId('CSH');
+    await Sync.save('cash_transactions', cashId, {
+      id: cashId, type: 'out', amount: paid, reference: voucherNo,
+      description: 'سداد فاتورة ' + invoiceNo,
+      category: 'مشتريات', date: now,
+      employee_name: State.currentEmployee.name,
+      partner_id: supId, payment_method: paymentMethod
+    });
+  }
 
-    for (const it of purItems) {
-      const iid = Utils.genId('PI');
-      await Sync.save('purchase_items', iid, {
-        id: iid, invoice_id: invoiceId, product_id: it.product_id,
-        product_name: it.name, quantity: it.quantity,
-        price: it.price, total: it.quantity * it.price
-      });
-    }
+  await Activity.log('purchase_invoice', invoiceNo + ' - ' + Utils.fmtMoney(total));
+  Toast.show('✅ تم تسجيل الفاتورة');
 
-    const s = (cache.partners || []).find(function (x) { return x.id === supId; });
-    if (s) {
-      s.balance = (Number(s.balance) || 0) + remaining;
-      await Sync.save('partners', supId, s);
-    }
-
-    if (paid > 0) {
-      const voucherId = Utils.genId('PAY');
-      const voucherNo = 'PAY-' + Date.now();
-      await Sync.save('vouchers', voucherId, {
-        id: voucherId, voucher_no: voucherNo, type: 'payment',
-        amount: paid, partner_id: supId,
-        employee_uid: State.currentUser.uid,
-        employee_name: State.currentEmployee.name,
-        date: now, payment_method: paymentMethod,
-        description: 'سداد فاتورة مشتريات ' + invoiceNo,
-        reference: invoiceNo, auto_generated: true, created_at: now
-      });
-      const cashId = Utils.genId('CSH');
-      await Sync.save('cash_transactions', cashId, {
-        id: cashId, type: 'out', amount: paid, reference: voucherNo,
-        description: 'سداد فاتورة ' + invoiceNo,
-        category: 'مشتريات', date: now,
-        employee_name: State.currentEmployee.name,
-        partner_id: supId, payment_method: paymentMethod
-      });
-    }
-
-    await Activity.log('purchase_invoice', invoiceNo + ' - ' + Utils.fmtMoney(total));
-    Toast.show('✅ تم تسجيل الفاتورة');
-
-    purItems.length = 0;
-    State._purchaseFormActive = false;
-    State._initialized.purchase = false;
-    Purchases.init();
-    setTimeout(function () { Invoices.show(invoiceId, 'purchase'); }, 300);
+  purItems.length = 0;
+  State._purchaseFormActive = false;
+  State._initialized.purchase = false;
+  Purchases.init();
+  setTimeout(function () { Invoices.show(invoiceId, 'purchase'); }, 300);
   }
 };
 
