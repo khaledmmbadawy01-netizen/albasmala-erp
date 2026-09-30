@@ -2500,16 +2500,53 @@ body::after {
        🤝 صفحة العملاء والموردين
        ═══════════════════════════════════════════════════════════════ -->
   <div id="page-partners" class="page hidden">
-    <div class="tabs">
-      <div class="tab active" onclick="Partners.switchTab(event,'customer')">العملاء</div>
-      <div class="tab" onclick="Partners.switchTab(event,'supplier')">الموردون</div>
+  <div class="tabs">
+    <div class="tab active" onclick="Partners.switchTab(event,'customer')">👤 العملاء</div>
+    <div class="tab" onclick="Partners.switchTab(event,'supplier')">🏭 الموردون</div>
+  </div>
+
+  <!-- ⚠️ الإحصائيات -->
+  <div id="partnerStats" class="stats-grid"></div>
+
+  <!-- ⚠️ البحث -->
+  <div class="search-bar">
+    <span>🔍</span>
+    <input type="text" id="partnerSearch" placeholder="ابحث بالاسم أو الهاتف..." oninput="Partners.search(this.value)">
+  </div>
+
+  <!-- ⚠️ فلتر الرصيد -->
+  <div style="padding:0 12px;margin-bottom:8px;display:flex;gap:6px;overflow-x:auto;" id="partnerBalanceFilter">
+    <button class="btn btn-sm btn-primary filter-btn active" data-balance="all" onclick="Partners.setBalanceFilter('all')">📋 الكل</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-balance="debit" onclick="Partners.setBalanceFilter('debit')">🔴 مدين لنا</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-balance="credit" onclick="Partners.setBalanceFilter('credit')">🟢 دائن</button>
+    <button class="btn btn-sm btn-outline filter-btn" data-balance="zero" onclick="Partners.setBalanceFilter('zero')">⚪ متوازن</button>
+  </div>
+
+  <!-- ⚠️ الترتيب -->
+  <div class="search-bar">
+    <span>🔽</span>
+    <select id="partnerSort" style="flex:1;background:transparent;border:none;color:var(--text);font-size:15px;outline:none;" onchange="Partners.setSort(this.value)">
+      <option value="newest">🆕 الأحدث</option>
+      <option value="balance_high">💰 الرصيد الأعلى</option>
+      <option value="balance_low">📉 الرصيد الأقل</option>
+      <option value="name">🔤 الاسم</option>
+    </select>
+    <button class="btn btn-outline btn-sm" onclick="Partners.resetFilters()">🔄</button>
+  </div>
+
+  <!-- ⚠️ القائمة -->
+  <div id="partnerList"></div>
+
+  <!-- ⚠️ أزرار التصدير -->
+  <div class="card" style="margin-top:12px;">
+    <h3>📤 تصدير القائمة</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <button class="btn btn-primary" onclick="Partners.exportExcel()">📊 Excel</button>
+      <button class="btn btn-info" onclick="Partners.exportPDF()">📄 PDF</button>
     </div>
-    <div class="search-bar">
-      <span>🔍</span>
-      <input type="text" id="partnerSearch" placeholder="ابحث..." oninput="Partners.search()">
-    </div>
-    <div id="partnerList"></div>
-    <button class="fab" onclick="Partners.edit()" id="partnerAddBtn">+</button>
+  </div>
+
+  <button class="fab" onclick="Partners.edit()" id="partnerAddBtn">+</button>
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
